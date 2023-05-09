@@ -35,8 +35,8 @@ func (c GithubClient) CloneRepo(r Repository) {
 		panic(err)
 	}
 	path := fmt.Sprintf("~/code/%s/%s/", strings.ToLower(primaryLanaguage), r.Name())
-	cmd := fmt.Sprintf("git clone %s %s", r.CloneUrl, path)
-	execCmd(cmd)
+	cmd := fmt.Sprintf("git clone %s", r.CloneUrl)
+	execCmd(cmd, path)
 }
 
 func (c GithubClient) GetPrimaryLanguageForRepo(n string) (string, error) {
@@ -60,8 +60,12 @@ func (c GithubClient) GetPrimaryLanguageForRepo(n string) (string, error) {
 }
 
 func (c GithubClient) HasLocalChanges(path string) bool {
-	cmd := fmt.Sprintf("cd %s && git status | grep 'nothing to commit, working tree clean'  | wc -l", path)
-	o, err := exec.Command("bash", "-c", cmd).Output()
+	gitCmd := "git status | grep 'nothing to commit, working tree clean'  | wc -l"
+
+	cmd := exec.Command("bash", "-c", gitCmd)
+	cmd.Dir = path
+	o, err := cmd.Output()
+
 	if err != nil {
 		panic(err)
 	}
@@ -74,28 +78,26 @@ func (c GithubClient) PushLocalChanges(path string) {
 		return 
 	}
 
-	cmd := fmt.Sprintf("cd %s && git add . && git commit -m 'work in progress' && git push", path)
-	fmt.Println(cmd)
-	execCmd(cmd)
+	execCmd("git add . && git commit -m 'work in progress' && git push", path)
 }
 
 func (c GithubClient) StashLocalChanges(path string) {
-	cmd := fmt.Sprintf("cd %s && git add . && git stash", path)
-	execCmd(cmd)
+	execCmd("git add . && git stash", path)
 }
 
 func (c GithubClient) ResetLocalChanges(path string) {
-	cmd := fmt.Sprintf("cd %s && git add . && git reset --hard", path)
-	execCmd(cmd)
+	execCmd("git add . && git reset --hard", path)
 }
 
 func (c GithubClient) PullLatestChanges(path string) {
-	cmd := fmt.Sprintf("cd %s && git fetch && git pull", path)
-	execCmd(cmd)
+	execCmd("git fetch && git pull", path)
 }
 
-func execCmd(cmd string) {
-	_, err := exec.Command("bash", "-c", cmd).Output()
+func execCmd(cmd, workingDir string) {
+	c := exec.Command("bash", "-c", cmd)
+	c.Dir = workingDir
+
+	_, err := c.Output()
 	if err != nil {
 		panic(err)
 	}
