@@ -1,10 +1,9 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"sgit/internal/github_client"
 	"os"
+	"sgit/internal/github_client"
 	"strings"
 	"sync"
 
@@ -12,51 +11,49 @@ import (
 )
 
 type RefreshCommand struct {
-	Gc *github_client.GithubClient
+	githubClient *github_client.GithubClient
+	targetDir    string
 }
 
 func NewRefreshCommand() (*RefreshCommand, error) {
-	token, ok := os.LookupEnv("GITHUB_TOKEN")
-	if !ok {
-		return nil, errors.New("Unset environment variable: GITHUB_TOKEN")
-	}
-
-	org, ok := os.LookupEnv("GITHUB_ORG")
-	if !ok {
-		return nil, errors.New("Unset environment variable: GITHUB_ORG")
-	}
-
-	gc, err := github_client.NewGithubClient(token, org)
+	token := lookupEnv("GITHUB_TOKEN")
+	org := lookupEnv("GITHUB_ORG")
+	targetDir := lookupEnv("CODE_HOME_DIR")
+	githubClient, err := github_client.NewGithubClient(token, org, targetDir)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
-	return &RefreshCommand{gc}, nil
+	return &RefreshCommand{githubClient, targetDir}, nil
+}
+
+func lookupEnv(key string) string {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		panic("Unset environment variable: " + key)
+	}
+
+	return val
 }
 
 func (c RefreshCommand) refresh(repo github_client.Repository) repositoryState {
-	lang, err := c.Gc.GetPrimaryLanguageForRepo(repo.Name())
+	lang, err := c.githubClient.GetPrimaryLanguageForRepo(repo.Name())
 	if err != nil {
 		panic(err)
 	}
 
-	h, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
-	}
-
-	path := fmt.Sprintf("%s/code/%s/%s/", h, strings.ToLower(lang), repo.Name())
+	path := fmt.Sprintf("%s/%s/%s", c.targetDir, strings.ToLower(lang), repo.Name())
 	exists, err := exists(path)
 	if err != nil {
 		panic(err)
 	}
 
 	if !exists {
-		c.Gc.CloneRepo(repo)
+		c.githubClient.CloneRepo(repo)
 		return repositoryState{repo, false, path}
 	}
 
-	if !c.Gc.HasLocalChanges(path) {
-		c.Gc.PullLatestChanges(path)
+	if !c.githubClient.HasLocalChanges(path) {
+		c.githubClient.PullLatestChanges(path)
 		return repositoryState{repo, false, path}
 	}
 
@@ -64,15 +61,15 @@ func (c RefreshCommand) refresh(repo github_client.Repository) repositoryState {
 }
 
 type repositoryState struct {
-	r github_client.Repository
+	r     github_client.Repository
 	stale bool
-	path string
+	path  string
 }
 
 func (c RefreshCommand) Run() {
-	var wg sync.WaitGroup 
+	var wg sync.WaitGroup
 	ac := make(chan repositoryState)
-	for _, r := range c.Gc.GetAllRepos() {
+	for _, r := range c.githubClient.GetAllRepos() {
 		wg.Add(1)
 		go func(r github_client.Repository, ac chan repositoryState) {
 			defer wg.Done()
@@ -81,34 +78,34 @@ func (c RefreshCommand) Run() {
 	}
 
 	go func() {
-	   for rs := range ac {
-		   if !rs.stale  {
-			   continue
-		   }
+		for rs := range ac {
+			if !rs.stale {
+				continue
+			}
 
-		   p := promptui.Select{
-			   Label: rs.r.Name() + " has local changes",
-			   Items: []string{"Skip", "Push", "Stash", "Reset"},
-		   }
+			p := promptui.Select{
+				Label: rs.r.Name() + " has local changes",
+				Items: []string{"Skip", "Push", "Stash", "Reset"},
+			}
 
-		   _, a, err :=  p.Run()
-		   if err != nil {
-			   panic(err)
-		   }
+			_, a, err := p.Run()
+			if err != nil {
+				panic(err)
+			}
 
-		   if a == "Skip" {
-			   continue
-		   } 
+			if a == "Skip" {
+				continue
+			}
 
-		   if a == "Push" {
-			   c.Gc.PushLocalChanges(rs.path)
-		   } else if a == "Stash" {
-			   c.Gc.StashLocalChanges(rs.path)
-		   } else  if a == "Reset" {
-			   c.Gc.ResetLocalChanges(rs.path)
-		   }
-		   c.Gc.PullLatestChanges(rs.path)
-	   }
+			if a == "Push" {
+				c.githubClient.PushLocalChanges(rs.path)
+			} else if a == "Stash" {
+				c.githubClient.StashLocalChanges(rs.path)
+			} else if a == "Reset" {
+				c.githubClient.ResetLocalChanges(rs.path)
+			}
+			c.githubClient.PullLatestChanges(rs.path)
+		}
 	}()
 
 	wg.Wait()
@@ -116,8 +113,12 @@ func (c RefreshCommand) Run() {
 }
 
 func exists(path string) (bool, error) {
-    _, err := os.Stat(path)
-    if err == nil { return true, nil }
-    if os.IsNotExist(err) { return false, nil }
-    return false, err
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }

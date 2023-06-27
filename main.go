@@ -2,13 +2,12 @@ package main
 
 import (
 	"sgit/internal/cmd"
-	"log"
 )
 
 func main() {
 	rc, err := cmd.NewRefreshCommand()
 	if err != nil {
-		log.Fatal(err.Error())
+		panic(err)
 	}
 	rc.Run()
 }

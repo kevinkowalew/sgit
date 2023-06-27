@@ -12,30 +12,34 @@ import (
 )
 
 type GithubClient struct {
-	token string
-	org string
-	baseDir string
+	token     string
+	org       string
+	targetDir string
 }
 
-func NewGithubClient(token, org string) (*GithubClient, error) {
+func NewGithubClient(token, org, targetDir string) (*GithubClient, error) {
 	if token == "" {
 		return nil, errors.New("Unable to create GithubClient: empty access token")
 	}
 
-	return &GithubClient{token,org, "~/code/"}, nil 
+	return &GithubClient{token, org, targetDir}, nil
 }
 
 func (c GithubClient) CloneRepo(r Repository) {
 	if r.Name() == "sgit" {
-		return 
+		return
 	}
 
 	primaryLanaguage, err := c.GetPrimaryLanguageForRepo(r.Name())
 	if err != nil {
 		panic(err)
 	}
-	path := fmt.Sprintf("~/code/%s/%s/", strings.ToLower(primaryLanaguage), r.Name())
-	cmd := fmt.Sprintf("git clone %s", r.CloneUrl)
+
+	path := fmt.Sprintf("%s%s/%s", c.targetDir, strings.ToLower(primaryLanaguage), r.Name())
+	cmd := fmt.Sprintf("mkdir -p %s", path)
+	execCmd(cmd, "")
+
+	cmd = fmt.Sprintf("git clone %s", r.SshUrl)
 	execCmd(cmd, path)
 }
 
@@ -50,7 +54,7 @@ func (c GithubClient) GetPrimaryLanguageForRepo(n string) (string, error) {
 
 	primaryLanguage := "unknown"
 	maxLineCount := -1
-	for k,v := range *langs {
+	for k, v := range *langs {
 		if v > maxLineCount {
 			primaryLanguage = k
 			maxLineCount = v
@@ -75,7 +79,7 @@ func (c GithubClient) HasLocalChanges(path string) bool {
 
 func (c GithubClient) PushLocalChanges(path string) {
 	if !c.HasLocalChanges(path) {
-		return 
+		return
 	}
 
 	execCmd("git add . && git commit -m 'work in progress' && git push", path)
@@ -95,7 +99,9 @@ func (c GithubClient) PullLatestChanges(path string) {
 
 func execCmd(cmd, workingDir string) {
 	c := exec.Command("bash", "-c", cmd)
-	c.Dir = workingDir
+	if workingDir != "" {
+		c.Dir = workingDir
+	}
 
 	_, err := c.Output()
 	if err != nil {
@@ -105,7 +111,7 @@ func execCmd(cmd, workingDir string) {
 
 type Repository struct {
 	FullName string `json:"full_name"`
-	CloneUrl string `json:"clone_url"`
+	SshUrl   string `json:"ssh_url"`
 }
 
 func (r Repository) Name() string {
@@ -128,7 +134,7 @@ func (c GithubClient) createRequest(endpoint string) *http.Request {
 	if err != nil {
 		panic(err)
 	}
-	req.Header.Add("Authorization", "Bearer " + c.token)
+	req.Header.Add("Authorization", "Bearer "+c.token)
 	return req
 }
 
