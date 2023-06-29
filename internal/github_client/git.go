@@ -26,10 +26,6 @@ func NewGithubClient(token, org, targetDir string) (*GithubClient, error) {
 }
 
 func (c GithubClient) CloneRepo(r Repository) {
-	if r.Name() == "sgit" {
-		return
-	}
-
 	primaryLanaguage, err := c.GetPrimaryLanguageForRepo(r.Name())
 	if err != nil {
 		panic(err)
