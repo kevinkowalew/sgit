@@ -31,7 +31,7 @@ func (c GithubClient) CloneRepo(r Repository) {
 		panic(err)
 	}
 
-	path := fmt.Sprintf("%s%s/%s", c.targetDir, strings.ToLower(primaryLanaguage), r.Name())
+	path := fmt.Sprintf("%s/%s/%s", c.targetDir, strings.ToLower(primaryLanaguage), r.Name())
 	cmd := fmt.Sprintf("mkdir -p %s", path)
 	execCmd(cmd, "")
 
@@ -140,8 +140,12 @@ func do[T any](req *http.Request) *T {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-
 	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		log.Fatalf("Failed to fetch repos from github (%s)", res.Status)
+	}
+
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		log.Fatal(err.Error())
