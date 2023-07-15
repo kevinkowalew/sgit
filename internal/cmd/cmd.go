@@ -108,10 +108,6 @@ func (c *refreshCommand) Run() error {
 	})
 
 	for _, r := range allRepos {
-		_, err := c.refresh(r)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
 		wg.Add(1)
 		go func(r types.GithubRepository, ac chan struct {
 			*repositoryState
