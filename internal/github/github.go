@@ -1,9 +1,10 @@
-package github_client
+package github
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"internal/types"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -25,7 +26,7 @@ func NewGithubClient(token, org, targetDir string) (*GithubClient, error) {
 	return &GithubClient{token, org, targetDir}, nil
 }
 
-func (c GithubClient) CloneRepo(r Repository) {
+func (c GithubClient) CloneRepo(r types.Repository) {
 	primaryLanaguage, err := c.GetPrimaryLanguageForRepo(r.Name())
 	if err != nil {
 		panic(err)
@@ -59,40 +60,6 @@ func (c GithubClient) GetPrimaryLanguageForRepo(n string) (string, error) {
 	return primaryLanguage, nil
 }
 
-func (c GithubClient) HasLocalChanges(path string) bool {
-	gitCmd := "git status | grep 'nothing to commit, working tree clean'  | wc -l"
-
-	cmd := exec.Command("bash", "-c", gitCmd)
-	cmd.Dir = path
-	o, err := cmd.Output()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return strings.TrimSpace(string(o)) != "1"
-}
-
-func (c GithubClient) PushLocalChanges(path string) {
-	if !c.HasLocalChanges(path) {
-		return
-	}
-
-	execCmd("git add . && git commit -m 'work in progress' && git push", path)
-}
-
-func (c GithubClient) StashLocalChanges(path string) {
-	execCmd("git add . && git stash", path)
-}
-
-func (c GithubClient) ResetLocalChanges(path string) {
-	execCmd("git add . && git reset --hard", path)
-}
-
-func (c GithubClient) PullLatestChanges(path string) {
-	execCmd("git fetch && git pull", path)
-}
-
 func execCmd(cmd, workingDir string) {
 	c := exec.Command("bash", "-c", cmd)
 	if workingDir != "" {
@@ -105,21 +72,11 @@ func execCmd(cmd, workingDir string) {
 	}
 }
 
-type Repository struct {
-	FullName string `json:"full_name"`
-	SshUrl   string `json:"ssh_url"`
-}
-
-func (r Repository) Name() string {
-	p := strings.Split(r.FullName, "/")
-	return p[len(p)-1]
-}
-
-func (c GithubClient) GetAllRepos() []Repository {
+func (c GithubClient) GetAllRepos() []types.Repository {
 	req := c.createRequest(fmt.Sprintf("/orgs/%s/repos", c.org))
-	repos := do[[]Repository](req)
+	repos := do[[]types.Repository](req)
 	if repos == nil {
-		return []Repository{}
+		return []types.Repository{}
 	}
 	return *repos
 }

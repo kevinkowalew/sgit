@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"internal/filesystem"
+	"internal/git"
+	"internal/github_client"
+	"internal/interfaces"
 	"os"
-	"sgit/internal/github_client"
 	"strings"
 	"sync"
 
@@ -11,8 +14,10 @@ import (
 )
 
 type RefreshCommand struct {
-	githubClient *github_client.GithubClient
-	targetDir    string
+	githubClient     interfaces.GithubApiClient
+	gitClient        interfaces.GitLocalClient
+	fileSystemClient interfaces.FileSystemClient
+	targetDir        string
 }
 
 func NewRefreshCommand() (*RefreshCommand, error) {
@@ -23,7 +28,9 @@ func NewRefreshCommand() (*RefreshCommand, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RefreshCommand{githubClient, targetDir}, nil
+	gitClient := git.NewGitClient()
+	filesystemClient := filesystem.NewFilesystem()
+	return &RefreshCommand{githubClient, gitClient, filesystemClient, targetDir}, nil
 }
 
 func lookupEnv(key string) string {
