@@ -9,5 +9,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	rc.Run()
+
+	err = rc.Run()
+	if err != nil {
+		panic(err)
+	}
 }

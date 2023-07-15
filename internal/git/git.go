@@ -1,18 +1,26 @@
 package git
 
 import (
+	"fmt"
 	"os/exec"
+	"sgit/internal/bash"
+	"sgit/internal/types"
 	"strings"
 )
 
-type GitClient struct {
+type gitClient struct {
 }
 
-func NewGitClient() *GitClient {
-	return &GitClient{}
+func NewClient() *gitClient {
+	return &gitClient{}
 }
 
-func (c GitClient) HasLocalChanges(path string) (bool, error) {
+func (c gitClient) CloneRepo(r types.GithubRepository, path string) error {
+	cmd := fmt.Sprintf("git clone %s", r.SshUrl)
+	return bash.Execute(cmd, path)
+}
+
+func (c gitClient) HasLocalChanges(path string) (bool, error) {
 	gitCmd := "git status | grep 'nothing to commit, working tree clean'  | wc -l"
 
 	cmd := exec.Command("bash", "-c", gitCmd)
@@ -20,42 +28,29 @@ func (c GitClient) HasLocalChanges(path string) (bool, error) {
 	o, err := cmd.Output()
 
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
 	return strings.TrimSpace(string(o)) != "1", nil
 }
 
-func (c GitClient) PushLocalChanges(path string) error {
+func (c gitClient) PushLocalChanges(path string) error {
 	hasChanges, err := c.HasLocalChanges(path)
-	if err != nil {
+	if err != nil || !hasChanges {
 		return err
 	}
-	if !hasChanges {
-		return nil
-	}
 
-	return execCmd("git add . && git commit -m 'work in progress' && git push", path)
+	return bash.Execute("git add . && git commit -m 'work in progress' && git push", path)
 }
 
-func (c GitClient) StashLocalChanges(path string) error {
-	return execCmd("git add . && git stash", path)
+func (c gitClient) StashLocalChanges(path string) error {
+	return bash.Execute("git add . && git stash", path)
 }
 
-func (c GitClient) ResetLocalChanges(path string) error {
-	return execCmd("git add . && git reset --hard", path)
+func (c gitClient) ResetLocalChanges(path string) error {
+	return bash.Execute("git add . && git reset --hard", path)
 }
 
-func (c GitClient) PullLatestChanges(path string) error {
-	return execCmd("git fetch && git pull", path)
-}
-
-func execCmd(cmd, workingDir string) error {
-	c := exec.Command("bash", "-c", cmd)
-	if workingDir != "" {
-		c.Dir = workingDir
-	}
-
-	_, err := c.Output()
-	return err
+func (c gitClient) PullLatestChanges(path string) error {
+	return bash.Execute("git fetch && git pull", path)
 }

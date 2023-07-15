@@ -2,35 +2,34 @@ package cmd
 
 import (
 	"fmt"
-	"internal/filesystem"
-	"internal/git"
-	"internal/github_client"
-	"internal/interfaces"
 	"os"
+	"sgit/internal/filesystem"
+	"sgit/internal/git"
+	"sgit/internal/github"
+	"sgit/internal/intefaces"
+	"sgit/internal/types"
 	"strings"
 	"sync"
 
 	"github.com/manifoldco/promptui"
 )
 
-type RefreshCommand struct {
-	githubClient     interfaces.GithubApiClient
-	gitClient        interfaces.GitLocalClient
-	fileSystemClient interfaces.FileSystemClient
-	targetDir        string
+type refreshCommand struct {
+	github     interfaces.GithubClient
+	git        interfaces.GitClient
+	filesystem interfaces.FilesystemClient
+	targetDir  string
 }
 
-func NewRefreshCommand() (*RefreshCommand, error) {
+func NewRefreshCommand() (*refreshCommand, error) {
 	token := lookupEnv("GITHUB_TOKEN")
 	org := lookupEnv("GITHUB_ORG")
 	targetDir := lookupEnv("CODE_HOME_DIR")
-	githubClient, err := github_client.NewGithubClient(token, org, targetDir)
-	if err != nil {
-		return nil, err
-	}
-	gitClient := git.NewGitClient()
-	filesystemClient := filesystem.NewFilesystem()
-	return &RefreshCommand{githubClient, gitClient, filesystemClient, targetDir}, nil
+
+	githubClient := github.NewClient(token, org)
+	gitClient := git.NewClient()
+	filesystemClient := filesystem.NewClient()
+	return newRefreshCommand(githubClient, gitClient, filesystemClient, targetDir), nil
 }
 
 func lookupEnv(key string) string {
@@ -42,51 +41,87 @@ func lookupEnv(key string) string {
 	return val
 }
 
-func (c RefreshCommand) refresh(repo github_client.Repository) repositoryState {
-	lang, err := c.githubClient.GetPrimaryLanguageForRepo(repo.Name())
+func newRefreshCommand(github interfaces.GithubClient, git interfaces.GitClient, filesystem interfaces.FilesystemClient, targetDir string) *refreshCommand {
+	return &refreshCommand{github, git, filesystem, targetDir}
+}
+
+func (c refreshCommand) refresh(repo types.GithubRepository) (*repositoryState, error) {
+	lang, err := c.github.GetPrimaryLanguageForRepo(repo.Name())
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	path := fmt.Sprintf("%s/%s/%s", c.targetDir, strings.ToLower(lang), repo.Name())
-	exists, err := exists(path)
+	exists, err := c.filesystem.Exists(path)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if !exists {
-		c.githubClient.CloneRepo(repo)
-		return repositoryState{repo, false, path}
+		err = c.filesystem.CreateDirectory(path)
+		if err != nil {
+			return nil, err
+		}
+
+		err = c.git.CloneRepo(repo, path)
+		if err != nil {
+			return nil, err
+		}
+		return &repositoryState{repo, false, path}, nil
 	}
 
-	if !c.githubClient.HasLocalChanges(path) {
-		c.githubClient.PullLatestChanges(path)
-		return repositoryState{repo, false, path}
+	hasLocalChanges, err := c.git.HasLocalChanges(path)
+	if err != nil {
+		return nil, err
 	}
 
-	return repositoryState{repo, true, path}
+	if !hasLocalChanges {
+		err = c.git.PullLatestChanges(path)
+		if err != nil {
+			return nil, err
+		}
+		return &repositoryState{repo, false, path}, nil
+	}
+
+	return &repositoryState{repo, true, path}, nil
 }
 
 type repositoryState struct {
-	r     github_client.Repository
-	stale bool
-	path  string
+	r               types.GithubRepository
+	hasLocalChanges bool
+	path            string
 }
 
-func (c RefreshCommand) Run() {
+func (c refreshCommand) Run() error {
+	// TODO: implement reported failures here
 	var wg sync.WaitGroup
-	ac := make(chan repositoryState)
-	for _, r := range c.githubClient.GetAllRepos() {
+	ac := make(chan struct {
+		*repositoryState
+		error
+	})
+
+	allRepos, err := c.github.GetAllRepos()
+	if err != nil {
+		return err
+	}
+	for _, r := range allRepos {
 		wg.Add(1)
-		go func(r github_client.Repository, ac chan repositoryState) {
+		go func(r types.GithubRepository, ac chan struct {
+			*repositoryState
+			error
+		}) {
 			defer wg.Done()
-			ac <- c.refresh(r)
+			state, err := c.refresh(r)
+			ac <- struct {
+				*repositoryState
+				error
+			}{state, err}
 		}(r, ac)
 	}
 
 	go func() {
 		for rs := range ac {
-			if !rs.stale {
+			if !rs.hasLocalChanges {
 				continue
 			}
 
@@ -104,28 +139,19 @@ func (c RefreshCommand) Run() {
 				continue
 			}
 
+			// TODO: figure this out
 			if a == "Push" {
-				c.githubClient.PushLocalChanges(rs.path)
+				err = c.git.PushLocalChanges(rs.path)
 			} else if a == "Stash" {
-				c.githubClient.StashLocalChanges(rs.path)
+				err = c.git.StashLocalChanges(rs.path)
 			} else if a == "Reset" {
-				c.githubClient.ResetLocalChanges(rs.path)
+				err = c.git.ResetLocalChanges(rs.path)
 			}
-			c.githubClient.PullLatestChanges(rs.path)
+			err = c.git.PullLatestChanges(rs.path)
 		}
 	}()
 
 	wg.Wait()
 	close(ac)
-}
-
-func exists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
+	return nil
 }
