@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sgit/internal/filesystem"
@@ -22,9 +23,20 @@ type refreshCommand struct {
 }
 
 func NewRefreshCommand() (*refreshCommand, error) {
-	token := lookupEnv("GITHUB_TOKEN")
-	org := lookupEnv("GITHUB_ORG")
-	targetDir := lookupEnv("CODE_HOME_DIR")
+	token, ok := os.LookupEnv("GITHUB_TOKEN")
+	if !ok {
+		return nil, errors.New("Unset environment variable: GITHUB_TOKEN")
+	}
+
+	org, ok := os.LookupEnv("GITHUB_ORG")
+	if !ok {
+		return nil, errors.New("Unset environment variable: GITHUB_ORG")
+	}
+
+	targetDir, ok := os.LookupEnv("CODE_HOME_DIR")
+	if !ok {
+		return nil, errors.New("Unset environment variable: CODE_HOME_DIR")
+	}
 
 	githubClient := github.NewClient(token, org)
 	gitClient := git.NewClient()
@@ -32,20 +44,11 @@ func NewRefreshCommand() (*refreshCommand, error) {
 	return newRefreshCommand(githubClient, gitClient, filesystemClient, targetDir), nil
 }
 
-func lookupEnv(key string) string {
-	val, ok := os.LookupEnv(key)
-	if !ok {
-		panic("Unset environment variable: " + key)
-	}
-
-	return val
-}
-
 func newRefreshCommand(github interfaces.GithubClient, git interfaces.GitClient, filesystem interfaces.FilesystemClient, targetDir string) *refreshCommand {
 	return &refreshCommand{github, git, filesystem, targetDir}
 }
 
-func (c refreshCommand) refresh(repo types.GithubRepository) (*repositoryState, error) {
+func (c *refreshCommand) refresh(repo types.GithubRepository) (*repositoryState, error) {
 	lang, err := c.github.GetPrimaryLanguageForRepo(repo.Name())
 	if err != nil {
 		return nil, err
@@ -62,7 +65,6 @@ func (c refreshCommand) refresh(repo types.GithubRepository) (*repositoryState, 
 		if err != nil {
 			return nil, err
 		}
-
 		err = c.git.CloneRepo(repo, path)
 		if err != nil {
 			return nil, err
@@ -92,30 +94,34 @@ type repositoryState struct {
 	path            string
 }
 
-func (c refreshCommand) Run() error {
-	// TODO: implement reported failures here
+func (c *refreshCommand) Run() error {
 	var wg sync.WaitGroup
+	allRepos, err := c.github.GetAllRepos()
+	if err != nil {
+		return err
+	}
+
 	ac := make(chan struct {
 		*repositoryState
 		error
 	})
 
-	allRepos, err := c.github.GetAllRepos()
-	if err != nil {
-		return err
-	}
 	for _, r := range allRepos {
+		_, err := c.refresh(r)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
 		wg.Add(1)
 		go func(r types.GithubRepository, ac chan struct {
 			*repositoryState
 			error
 		}) {
 			defer wg.Done()
-			state, err := c.refresh(r)
+			repoState, err := c.refresh(r)
 			ac <- struct {
 				*repositoryState
 				error
-			}{state, err}
+			}{repoState, err}
 		}(r, ac)
 	}
 
@@ -139,7 +145,6 @@ func (c refreshCommand) Run() error {
 				continue
 			}
 
-			// TODO: figure this out
 			if a == "Push" {
 				err = c.git.PushLocalChanges(rs.path)
 			} else if a == "Stash" {
@@ -147,7 +152,16 @@ func (c refreshCommand) Run() error {
 			} else if a == "Reset" {
 				err = c.git.ResetLocalChanges(rs.path)
 			}
+
+			if err != nil {
+				fmt.Println("Error: " + err.Error())
+				continue
+			}
+
 			err = c.git.PullLatestChanges(rs.path)
+			if err != nil {
+				fmt.Println("Error: " + err.Error())
+			}
 		}
 	}()
 

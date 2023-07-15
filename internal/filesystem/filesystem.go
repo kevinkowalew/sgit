@@ -15,7 +15,7 @@ func NewClient() *FilesystemClient {
 
 func (fc FilesystemClient) CreateDirectory(path string) error {
 	cmd := fmt.Sprintf("mkdir -p %s", path)
-	return bash.Execute(cmd, path)
+	return bash.Execute(cmd, "")
 }
 
 func (fc FilesystemClient) Exists(path string) (bool, error) {

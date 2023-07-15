@@ -1,6 +1,8 @@
 package bash
 
-import "os/exec"
+import (
+	"os/exec"
+)
 
 func Execute(cmd, workingDir string) error {
 	c := exec.Command("bash", "-c", cmd)
