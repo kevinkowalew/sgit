@@ -54,7 +54,8 @@ func (c *refreshCommand) refresh(repo types.GithubRepository) (*repositoryState,
 		return nil, err
 	}
 
-	path := fmt.Sprintf("%s/%s/%s", c.targetDir, strings.ToLower(lang), repo.Name())
+	baseDir := fmt.Sprintf("%s/%s", c.targetDir, strings.ToLower(lang))
+	path := fmt.Sprintf("%s/%s", baseDir, repo.Name())
 	exists, err := c.filesystem.Exists(path)
 	if err != nil {
 		return nil, err
@@ -65,7 +66,7 @@ func (c *refreshCommand) refresh(repo types.GithubRepository) (*repositoryState,
 		if err != nil {
 			return nil, err
 		}
-		err = c.git.CloneRepo(repo, path)
+		err = c.git.CloneRepo(repo, baseDir)
 		if err != nil {
 			return nil, err
 		}
