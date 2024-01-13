@@ -29,28 +29,28 @@ func TestRefresh(t *testing.T) {
 	mockFilesystem := mock_interfaces.NewMockFilesystemClient(ctrl)
 	cmd := newRefreshCommand(mockGithubClient, mockGitClient, mockFilesystem, BASE_DIR)
 
-	type TestCase struct {
-		description   string
+	type testCase struct {
+		name          string
 		defineExpects func()
 		assertState   func(*repositoryState) bool
 	}
 
-	for _, tc := range []TestCase{
+	for _, tc := range []testCase{
 		{
-			description: "Forwards error from failed GetPrimaryLangaugeForRepo call",
+			name: "Forwards error from failed GetPrimaryLangaugeForRepo call",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return("", ERROR)
 			},
 		},
 		{
-			description: "Forwards error from failed directory exists call",
+			name: "Forwards error from failed directory exists call",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, ERROR)
 			},
 		},
 		{
-			description: "Forwards error from failed create directory call",
+			name: "Forwards error from failed create directory call",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
@@ -58,7 +58,7 @@ func TestRefresh(t *testing.T) {
 			},
 		},
 		{
-			description: "Forwards error from failed clone repo call",
+			name: "Forwards error from failed clone repo call",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
@@ -67,7 +67,7 @@ func TestRefresh(t *testing.T) {
 			},
 		},
 		{
-			description: "Clone repo happy path",
+			name: "Clone repo happy path",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
@@ -79,7 +79,7 @@ func TestRefresh(t *testing.T) {
 			},
 		},
 		{
-			description: "Forwards error from failed HasLocalChanges call",
+			name: "Forwards error from failed HasLocalChanges call",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
@@ -87,7 +87,7 @@ func TestRefresh(t *testing.T) {
 			},
 		},
 		{
-			description: "Forwards error from failed HasLocalChanges call",
+			name: "Forwards error from failed HasLocalChanges call",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
@@ -95,7 +95,7 @@ func TestRefresh(t *testing.T) {
 			},
 		},
 		{
-			description: "Repo with local changes happy path",
+			name: "Repo with local changes happy path",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
@@ -106,7 +106,7 @@ func TestRefresh(t *testing.T) {
 			},
 		},
 		{
-			description: "Forwards error from PullLatestChanges call",
+			name: "Forwards error from PullLatestChanges call",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
@@ -115,7 +115,7 @@ func TestRefresh(t *testing.T) {
 			},
 		},
 		{
-			description: "Repo without local changes happy path",
+			name: "Repo without local changes happy path",
 			defineExpects: func() {
 				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
@@ -127,18 +127,20 @@ func TestRefresh(t *testing.T) {
 			},
 		},
 	} {
-		tc.defineExpects()
-		state, err := cmd.refresh(MOCK_REPO)
+		t.Run(tc.name, func(t *testing.T) {
+			tc.defineExpects()
+			state, err := cmd.refresh(MOCK_REPO)
 
-		if err != nil && err.Error() != "failure" {
-			t.Fail()
-			return
-		}
+			if err != nil && err.Error() != "failure" {
+				t.Fail()
+				return
+			}
 
-		if tc.assertState != nil && !tc.assertState(state) {
-			t.Fail()
-		}
+			if tc.assertState != nil && !tc.assertState(state) {
+				t.Fail()
+			}
 
-		ctrl.Finish()
+			ctrl.Finish()
+		})
 	}
 }
