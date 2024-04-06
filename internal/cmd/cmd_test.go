@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"errors"
-	mock_interfaces "sgit/internal/intefaces/mocks"
 	"sgit/internal/types"
-
 	"testing"
 
 	"github.com/golang/mock/gomock"
 )
+
+//go:generate mockgen -source=./cmd.go -destination=./mock_cmd_test.go -package=cmd
 
 var (
 	FULL_NAME     = "repo"
@@ -24,10 +24,10 @@ var (
 func TestRefresh(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
-	mockGithubClient := mock_interfaces.NewMockGithubClient(ctrl)
-	mockGitClient := mock_interfaces.NewMockGitClient(ctrl)
-	mockFilesystem := mock_interfaces.NewMockFilesystemClient(ctrl)
-	cmd := newRefreshCommand(mockGithubClient, mockGitClient, mockFilesystem, BASE_DIR)
+	mockGithub := NewMockGithub(ctrl)
+	mockGit := NewMockGit(ctrl)
+	mockFilesystem := NewMockFilesystem(ctrl)
+	cmd := newRefreshCommand(mockGithub, mockGit, mockFilesystem, BASE_DIR)
 
 	type testCase struct {
 		name          string
@@ -39,20 +39,20 @@ func TestRefresh(t *testing.T) {
 		{
 			name: "Forwards error from failed GetPrimaryLangaugeForRepo call",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return("", ERROR)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return("", ERROR)
 			},
 		},
 		{
 			name: "Forwards error from failed directory exists call",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, ERROR)
 			},
 		},
 		{
 			name: "Forwards error from failed create directory call",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
 				mockFilesystem.EXPECT().CreateDirectory(FULL_PATH).Return(ERROR)
 			},
@@ -60,19 +60,19 @@ func TestRefresh(t *testing.T) {
 		{
 			name: "Forwards error from failed clone repo call",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
 				mockFilesystem.EXPECT().CreateDirectory(FULL_PATH).Return(nil)
-				mockGitClient.EXPECT().CloneRepo(MOCK_REPO, LANG_BASE_DIR).Return(ERROR)
+				mockGit.EXPECT().CloneRepo(MOCK_REPO, LANG_BASE_DIR).Return(ERROR)
 			},
 		},
 		{
 			name: "Clone repo happy path",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
 				mockFilesystem.EXPECT().CreateDirectory(FULL_PATH).Return(nil)
-				mockGitClient.EXPECT().CloneRepo(MOCK_REPO, LANG_BASE_DIR).Return(nil)
+				mockGit.EXPECT().CloneRepo(MOCK_REPO, LANG_BASE_DIR).Return(nil)
 			},
 			assertState: func(rs *repositoryState) bool {
 				return rs.path == FULL_PATH && rs.r.FullName == "repo" && rs.r.SshUrl == "repo.com" && rs.r.Name() == "repo" && !rs.hasLocalChanges
@@ -81,25 +81,25 @@ func TestRefresh(t *testing.T) {
 		{
 			name: "Forwards error from failed HasLocalChanges call",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGitClient.EXPECT().HasLocalChanges(FULL_PATH).Return(false, ERROR)
+				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(false, ERROR)
 			},
 		},
 		{
 			name: "Forwards error from failed HasLocalChanges call",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGitClient.EXPECT().HasLocalChanges(FULL_PATH).Return(false, ERROR)
+				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(false, ERROR)
 			},
 		},
 		{
 			name: "Repo with local changes happy path",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGitClient.EXPECT().HasLocalChanges(FULL_PATH).Return(true, nil)
+				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(true, nil)
 			},
 			assertState: func(rs *repositoryState) bool {
 				return rs.path == FULL_PATH && rs.r.FullName == "repo" && rs.r.SshUrl == "repo.com" && rs.r.Name() == "repo" && rs.hasLocalChanges
@@ -108,19 +108,19 @@ func TestRefresh(t *testing.T) {
 		{
 			name: "Forwards error from PullLatestChanges call",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGitClient.EXPECT().HasLocalChanges(FULL_PATH).Return(false, nil)
-				mockGitClient.EXPECT().PullLatestChanges(FULL_PATH).Return(ERROR)
+				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(false, nil)
+				mockGit.EXPECT().PullLatestChanges(FULL_PATH).Return(ERROR)
 			},
 		},
 		{
 			name: "Repo without local changes happy path",
 			defineExpects: func() {
-				mockGithubClient.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
+				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
 				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGitClient.EXPECT().HasLocalChanges(FULL_PATH).Return(false, nil)
-				mockGitClient.EXPECT().PullLatestChanges(FULL_PATH).Return(nil)
+				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(false, nil)
+				mockGit.EXPECT().PullLatestChanges(FULL_PATH).Return(nil)
 			},
 			assertState: func(rs *repositoryState) bool {
 				return rs.path == FULL_PATH && rs.r.FullName == "repo" && rs.r.SshUrl == "repo.com" && rs.r.Name() == "repo" && !rs.hasLocalChanges

@@ -7,7 +7,6 @@ import (
 	"sgit/internal/filesystem"
 	"sgit/internal/git"
 	"sgit/internal/github"
-	"sgit/internal/intefaces"
 	"sgit/internal/types"
 	"strings"
 	"sync"
@@ -15,12 +14,33 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
-type refreshCommand struct {
-	github     interfaces.GithubClient
-	git        interfaces.GitClient
-	filesystem interfaces.FilesystemClient
-	targetDir  string
-}
+type (
+	Github interface {
+		GetPrimaryLanguageForRepo(n string) (string, error)
+		GetAllRepos() ([]types.GithubRepository, error)
+	}
+
+	Filesystem interface {
+		CreateDirectory(path string) error
+		Exists(path string) (bool, error)
+	}
+
+	Git interface {
+		CloneRepo(r types.GithubRepository, path string) error
+		HasLocalChanges(path string) (bool, error)
+		PushLocalChanges(path string) error
+		StashLocalChanges(path string) error
+		ResetLocalChanges(path string) error
+		PullLatestChanges(path string) error
+	}
+
+	refreshCommand struct {
+		github     Github
+		git        Git
+		filesystem Filesystem
+		targetDir  string
+	}
+)
 
 func NewRefreshCommand() (*refreshCommand, error) {
 	token, ok := os.LookupEnv("GITHUB_TOKEN")
@@ -44,7 +64,7 @@ func NewRefreshCommand() (*refreshCommand, error) {
 	return newRefreshCommand(githubClient, gitClient, filesystemClient, targetDir), nil
 }
 
-func newRefreshCommand(github interfaces.GithubClient, git interfaces.GitClient, filesystem interfaces.FilesystemClient, targetDir string) *refreshCommand {
+func newRefreshCommand(github Github, git Git, filesystem Filesystem, targetDir string) *refreshCommand {
 	return &refreshCommand{github, git, filesystem, targetDir}
 }
 
