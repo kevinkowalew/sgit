@@ -6,7 +6,6 @@ package cmd
 
 import (
 	reflect "reflect"
-	types "sgit/internal/types"
 
 	gomock "github.com/golang/mock/gomock"
 )
@@ -35,10 +34,10 @@ func (m *MockGithub) EXPECT() *MockGithubMockRecorder {
 }
 
 // GetAllRepos mocks base method.
-func (m *MockGithub) GetAllRepos() ([]types.GithubRepository, error) {
+func (m *MockGithub) GetAllRepos() ([]GithubRepository, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllRepos")
-	ret0, _ := ret[0].([]types.GithubRepository)
+	ret0, _ := ret[0].([]GithubRepository)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -49,19 +48,34 @@ func (mr *MockGithubMockRecorder) GetAllRepos() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllRepos", reflect.TypeOf((*MockGithub)(nil).GetAllRepos))
 }
 
-// GetPrimaryLanguageForRepo mocks base method.
-func (m *MockGithub) GetPrimaryLanguageForRepo(n string) (string, error) {
+// GetCommitHash mocks base method.
+func (m *MockGithub) GetCommitHash(name, branch string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPrimaryLanguageForRepo", n)
+	ret := m.ctrl.Call(m, "GetCommitHash", name, branch)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCommitHash indicates an expected call of GetCommitHash.
+func (mr *MockGithubMockRecorder) GetCommitHash(name, branch interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommitHash", reflect.TypeOf((*MockGithub)(nil).GetCommitHash), name, branch)
+}
+
+// GetPrimaryLanguageForRepo mocks base method.
+func (m *MockGithub) GetPrimaryLanguageForRepo(name string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPrimaryLanguageForRepo", name)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetPrimaryLanguageForRepo indicates an expected call of GetPrimaryLanguageForRepo.
-func (mr *MockGithubMockRecorder) GetPrimaryLanguageForRepo(n interface{}) *gomock.Call {
+func (mr *MockGithubMockRecorder) GetPrimaryLanguageForRepo(name interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPrimaryLanguageForRepo", reflect.TypeOf((*MockGithub)(nil).GetPrimaryLanguageForRepo), n)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPrimaryLanguageForRepo", reflect.TypeOf((*MockGithub)(nil).GetPrimaryLanguageForRepo), name)
 }
 
 // MockFilesystem is a mock of Filesystem interface.
@@ -116,6 +130,58 @@ func (mr *MockFilesystemMockRecorder) Exists(path interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exists", reflect.TypeOf((*MockFilesystem)(nil).Exists), path)
 }
 
+// ListDirectories mocks base method.
+func (m *MockFilesystem) ListDirectories(path string, depth int) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDirectories", path, depth)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDirectories indicates an expected call of ListDirectories.
+func (mr *MockFilesystemMockRecorder) ListDirectories(path, depth interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDirectories", reflect.TypeOf((*MockFilesystem)(nil).ListDirectories), path, depth)
+}
+
+// MockTUI is a mock of TUI interface.
+type MockTUI struct {
+	ctrl     *gomock.Controller
+	recorder *MockTUIMockRecorder
+}
+
+// MockTUIMockRecorder is the mock recorder for MockTUI.
+type MockTUIMockRecorder struct {
+	mock *MockTUI
+}
+
+// NewMockTUI creates a new mock instance.
+func NewMockTUI(ctrl *gomock.Controller) *MockTUI {
+	mock := &MockTUI{ctrl: ctrl}
+	mock.recorder = &MockTUIMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockTUI) EXPECT() *MockTUIMockRecorder {
+	return m.recorder
+}
+
+// Handle mocks base method.
+func (m *MockTUI) Handle(repository GithubRepository, state RepositoryState) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Handle", repository, state)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Handle indicates an expected call of Handle.
+func (mr *MockTUIMockRecorder) Handle(repository, state interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Handle", reflect.TypeOf((*MockTUI)(nil).Handle), repository, state)
+}
+
 // MockGit is a mock of Git interface.
 type MockGit struct {
 	ctrl     *gomock.Controller
@@ -140,7 +206,7 @@ func (m *MockGit) EXPECT() *MockGitMockRecorder {
 }
 
 // CloneRepo mocks base method.
-func (m *MockGit) CloneRepo(r types.GithubRepository, path string) error {
+func (m *MockGit) CloneRepo(r GithubRepository, path string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CloneRepo", r, path)
 	ret0, _ := ret[0].(error)
@@ -153,73 +219,76 @@ func (mr *MockGitMockRecorder) CloneRepo(r, path interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloneRepo", reflect.TypeOf((*MockGit)(nil).CloneRepo), r, path)
 }
 
-// HasLocalChanges mocks base method.
-func (m *MockGit) HasLocalChanges(path string) (bool, error) {
+// GetBranchName mocks base method.
+func (m *MockGit) GetBranchName(path string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasLocalChanges", path)
+	ret := m.ctrl.Call(m, "GetBranchName", path)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBranchName indicates an expected call of GetBranchName.
+func (mr *MockGitMockRecorder) GetBranchName(path interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBranchName", reflect.TypeOf((*MockGit)(nil).GetBranchName), path)
+}
+
+// GetCommitHashes mocks base method.
+func (m *MockGit) GetCommitHashes(path string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCommitHashes", path)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCommitHashes indicates an expected call of GetCommitHashes.
+func (mr *MockGitMockRecorder) GetCommitHashes(path interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommitHashes", reflect.TypeOf((*MockGit)(nil).GetCommitHashes), path)
+}
+
+// HasMergeConflicts mocks base method.
+func (m *MockGit) HasMergeConflicts(path string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasMergeConflicts", path)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// HasLocalChanges indicates an expected call of HasLocalChanges.
-func (mr *MockGitMockRecorder) HasLocalChanges(path interface{}) *gomock.Call {
+// HasMergeConflicts indicates an expected call of HasMergeConflicts.
+func (mr *MockGitMockRecorder) HasMergeConflicts(path interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasLocalChanges", reflect.TypeOf((*MockGit)(nil).HasLocalChanges), path)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasMergeConflicts", reflect.TypeOf((*MockGit)(nil).HasMergeConflicts), path)
 }
 
-// PullLatestChanges mocks base method.
-func (m *MockGit) PullLatestChanges(path string) error {
+// HasUncommittedChanges mocks base method.
+func (m *MockGit) HasUncommittedChanges(path string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PullLatestChanges", path)
+	ret := m.ctrl.Call(m, "HasUncommittedChanges", path)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasUncommittedChanges indicates an expected call of HasUncommittedChanges.
+func (mr *MockGitMockRecorder) HasUncommittedChanges(path interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasUncommittedChanges", reflect.TypeOf((*MockGit)(nil).HasUncommittedChanges), path)
+}
+
+// PullLatest mocks base method.
+func (m *MockGit) PullLatest(path string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PullLatest", path)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// PullLatestChanges indicates an expected call of PullLatestChanges.
-func (mr *MockGitMockRecorder) PullLatestChanges(path interface{}) *gomock.Call {
+// PullLatest indicates an expected call of PullLatest.
+func (mr *MockGitMockRecorder) PullLatest(path interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullLatestChanges", reflect.TypeOf((*MockGit)(nil).PullLatestChanges), path)
-}
-
-// PushLocalChanges mocks base method.
-func (m *MockGit) PushLocalChanges(path string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PushLocalChanges", path)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// PushLocalChanges indicates an expected call of PushLocalChanges.
-func (mr *MockGitMockRecorder) PushLocalChanges(path interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PushLocalChanges", reflect.TypeOf((*MockGit)(nil).PushLocalChanges), path)
-}
-
-// ResetLocalChanges mocks base method.
-func (m *MockGit) ResetLocalChanges(path string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResetLocalChanges", path)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ResetLocalChanges indicates an expected call of ResetLocalChanges.
-func (mr *MockGitMockRecorder) ResetLocalChanges(path interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLocalChanges", reflect.TypeOf((*MockGit)(nil).ResetLocalChanges), path)
-}
-
-// StashLocalChanges mocks base method.
-func (m *MockGit) StashLocalChanges(path string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StashLocalChanges", path)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// StashLocalChanges indicates an expected call of StashLocalChanges.
-func (mr *MockGitMockRecorder) StashLocalChanges(path interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StashLocalChanges", reflect.TypeOf((*MockGit)(nil).StashLocalChanges), path)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullLatest", reflect.TypeOf((*MockGit)(nil).PullLatest), path)
 }

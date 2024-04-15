@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
-	"sgit/internal/types"
+	"sgit/internal/cmd"
 )
 
 type client struct {
@@ -36,13 +36,18 @@ func (c client) GetPrimaryLanguageForRepo(n string) (string, error) {
 	return primaryLanguage, nil
 }
 
-func (c client) GetAllRepos() ([]types.GithubRepository, error) {
+func (c client) GetAllRepos() ([]cmd.GithubRepository, error) {
 	url := fmt.Sprintf("/orgs/%s/repos", c.org)
-	repos, err := executeRequest[[]types.GithubRepository](url, c.token)
+	repos, err := executeRequest[[]cmd.GithubRepository](url, c.token)
 	if err != nil {
 		return nil, err
 	}
 	return *repos, err
+}
+
+func (c client) GetCommitHash(name, branch string) (string, error) {
+	// TODO: implement me
+	return "", nil
 }
 
 func executeRequest[T any](endpoint, token string) (*T, error) {
@@ -61,7 +66,7 @@ func executeRequest[T any](endpoint, token string) (*T, error) {
 	}
 
 	defer res.Body.Close()
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
 	}

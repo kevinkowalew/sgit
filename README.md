@@ -17,3 +17,4 @@ sgit
 1. ensures all organization repositories are cloned to `CODE_HOME_DIR` (organized in subfolders by language)
 2. checks all local repositories for changes. If found, you'll be prompted to address them (`push`, `reset`, `stash` or `ignore`).
 3. ensures all repositories and the current branch are up-to-date with the upstream
+

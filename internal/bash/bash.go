@@ -4,12 +4,12 @@ import (
 	"os/exec"
 )
 
-func Execute(cmd, workingDir string) error {
+func Execute(cmd, workingDir string) (string, error) {
 	c := exec.Command("bash", "-c", cmd)
 	if workingDir != "" {
 		c.Dir = workingDir
 	}
 
-	_, err := c.Output()
-	return err
+	b, err := c.Output()
+	return string(b), err
 }

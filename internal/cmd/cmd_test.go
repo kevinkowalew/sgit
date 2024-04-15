@@ -1,146 +1,110 @@
 package cmd
 
 import (
-	"errors"
-	"sgit/internal/types"
+	"sgit/internal/logging"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 )
 
 //go:generate mockgen -source=./cmd.go -destination=./mock_cmd_test.go -package=cmd
-
-var (
-	FULL_NAME     = "repo"
-	SSH_URL       = "repo.com"
-	ERROR         = errors.New("failure")
-	MOCK_REPO     = types.GithubRepository{FullName: FULL_NAME, SshUrl: SSH_URL}
-	BASE_DIR      = "/Users/me"
-	LANG_BASE_DIR = "/Users/me/python"
-	FULL_PATH     = "/Users/me/python/repo"
-	PYTHON        = "python"
-)
-
-func TestRefresh(t *testing.T) {
-	ctrl := gomock.NewController(t)
-
-	mockGithub := NewMockGithub(ctrl)
-	mockGit := NewMockGit(ctrl)
-	mockFilesystem := NewMockFilesystem(ctrl)
-	cmd := newRefreshCommand(mockGithub, mockGit, mockFilesystem, BASE_DIR)
+func TestRemoteToLocalRefresh(t *testing.T) {
+	name := "repo"
+	sshUrl := "repo.com"
+	repo := GithubRepository{FullName: name, SshUrl: sshUrl}
+	baseDir := "/Users/me"
+	langBaseDir := "/Users/me/python"
+	fullPath := "/Users/me/python/repo"
+	python := "python"
+	hash := "aa218f56b14c9653891f9e74264a383fa43fefbd"
+	branch := "main"
 
 	type testCase struct {
 		name          string
 		defineExpects func()
-		assertState   func(*repositoryState) bool
+	}
+	var github *MockGithub
+	var git *MockGit
+	var filesystem *MockFilesystem
+	var tui *MockTUI
+
+	testCases := []testCase{
+		{
+			name: "nonexistent local repo",
+			defineExpects: func() {
+				github.EXPECT().GetPrimaryLanguageForRepo(name).Return(python, nil)
+				filesystem.EXPECT().Exists(fullPath).Return(false, nil)
+				filesystem.EXPECT().CreateDirectory(fullPath).Return(nil)
+				git.EXPECT().CloneRepo(repo, langBaseDir).Return(nil)
+				tui.EXPECT().Handle(repo, UpToDate)
+			},
+		},
+		{
+			name: "existent up to date local repo",
+			defineExpects: func() {
+				github.EXPECT().GetPrimaryLanguageForRepo(name).Return(python, nil)
+				filesystem.EXPECT().Exists(fullPath).Return(true, nil)
+				git.EXPECT().GetBranchName(fullPath).Return(branch, nil)
+				git.EXPECT().HasUncommittedChanges(fullPath).Return(false, nil)
+				git.EXPECT().PullLatest(fullPath).Return(nil)
+				git.EXPECT().HasMergeConflicts(fullPath).Return(false, nil)
+				tui.EXPECT().Handle(repo, UpToDate)
+			},
+		},
+		{
+			name: "existent local repo with merge conflicts",
+			defineExpects: func() {
+				github.EXPECT().GetPrimaryLanguageForRepo(name).Return(python, nil)
+				filesystem.EXPECT().Exists(fullPath).Return(true, nil)
+				git.EXPECT().GetBranchName(fullPath).Return(branch, nil)
+				git.EXPECT().HasUncommittedChanges(fullPath).Return(false, nil)
+				git.EXPECT().PullLatest(fullPath).Return(nil)
+				git.EXPECT().HasMergeConflicts(fullPath).Return(true, nil)
+				tui.EXPECT().Handle(repo, HasMergeConflicts).Return(nil)
+			},
+		},
+		{
+			name: "existent local repo with uncommited changes",
+			defineExpects: func() {
+				github.EXPECT().GetPrimaryLanguageForRepo(name).Return(python, nil)
+				filesystem.EXPECT().Exists(fullPath).Return(true, nil)
+				git.EXPECT().GetBranchName(fullPath).Return(branch, nil)
+				git.EXPECT().HasUncommittedChanges(fullPath).Return(true, nil)
+				github.EXPECT().GetCommitHash(name, branch).Return(hash, nil)
+				git.EXPECT().GetCommitHashes(fullPath).Return([]string{hash}, nil)
+				tui.EXPECT().Handle(repo, HasUncommittedChanges).Return(nil)
+			},
+		},
+		{
+			name: "existent local repo with uncommited changes and behind upstream",
+			defineExpects: func() {
+				github.EXPECT().GetPrimaryLanguageForRepo(name).Return(python, nil)
+				filesystem.EXPECT().Exists(fullPath).Return(true, nil)
+				git.EXPECT().GetBranchName(fullPath).Return(branch, nil)
+				git.EXPECT().HasUncommittedChanges(fullPath).Return(true, nil)
+				github.EXPECT().GetCommitHash(name, branch).Return(hash, nil)
+				git.EXPECT().GetCommitHashes(fullPath).Return([]string{"gibberish"}, nil)
+				tui.EXPECT().Handle(repo, HasUncommittedChangesAndBehindUpstream).Return(nil)
+			},
+		},
 	}
 
-	for _, tc := range []testCase{
-		{
-			name: "Forwards error from failed GetPrimaryLangaugeForRepo call",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return("", ERROR)
-			},
-		},
-		{
-			name: "Forwards error from failed directory exists call",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, ERROR)
-			},
-		},
-		{
-			name: "Forwards error from failed create directory call",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
-				mockFilesystem.EXPECT().CreateDirectory(FULL_PATH).Return(ERROR)
-			},
-		},
-		{
-			name: "Forwards error from failed clone repo call",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
-				mockFilesystem.EXPECT().CreateDirectory(FULL_PATH).Return(nil)
-				mockGit.EXPECT().CloneRepo(MOCK_REPO, LANG_BASE_DIR).Return(ERROR)
-			},
-		},
-		{
-			name: "Clone repo happy path",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(false, nil)
-				mockFilesystem.EXPECT().CreateDirectory(FULL_PATH).Return(nil)
-				mockGit.EXPECT().CloneRepo(MOCK_REPO, LANG_BASE_DIR).Return(nil)
-			},
-			assertState: func(rs *repositoryState) bool {
-				return rs.path == FULL_PATH && rs.r.FullName == "repo" && rs.r.SshUrl == "repo.com" && rs.r.Name() == "repo" && !rs.hasLocalChanges
-			},
-		},
-		{
-			name: "Forwards error from failed HasLocalChanges call",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(false, ERROR)
-			},
-		},
-		{
-			name: "Forwards error from failed HasLocalChanges call",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(false, ERROR)
-			},
-		},
-		{
-			name: "Repo with local changes happy path",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(true, nil)
-			},
-			assertState: func(rs *repositoryState) bool {
-				return rs.path == FULL_PATH && rs.r.FullName == "repo" && rs.r.SshUrl == "repo.com" && rs.r.Name() == "repo" && rs.hasLocalChanges
-			},
-		},
-		{
-			name: "Forwards error from PullLatestChanges call",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(false, nil)
-				mockGit.EXPECT().PullLatestChanges(FULL_PATH).Return(ERROR)
-			},
-		},
-		{
-			name: "Repo without local changes happy path",
-			defineExpects: func() {
-				mockGithub.EXPECT().GetPrimaryLanguageForRepo(FULL_NAME).Return(PYTHON, nil)
-				mockFilesystem.EXPECT().Exists(FULL_PATH).Return(true, nil)
-				mockGit.EXPECT().HasLocalChanges(FULL_PATH).Return(false, nil)
-				mockGit.EXPECT().PullLatestChanges(FULL_PATH).Return(nil)
-			},
-			assertState: func(rs *repositoryState) bool {
-				return rs.path == FULL_PATH && rs.r.FullName == "repo" && rs.r.SshUrl == "repo.com" && rs.r.Name() == "repo" && !rs.hasLocalChanges
-			},
-		},
-	} {
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			l := logging.New()
+			github = NewMockGithub(ctrl)
+			git = NewMockGit(ctrl)
+			filesystem = NewMockFilesystem(ctrl)
+			tui = NewMockTUI(ctrl)
+
+			cmd := NewRefreshCommand(l, github, git, filesystem, tui, baseDir)
 			tc.defineExpects()
-			state, err := cmd.refresh(MOCK_REPO)
-
-			if err != nil && err.Error() != "failure" {
-				t.Fail()
-				return
+			if err := cmd.remoteToLocalRepoRefresh(repo); err != nil {
+				t.FailNow()
 			}
-
-			if tc.assertState != nil && !tc.assertState(state) {
-				t.Fail()
-			}
-
-			ctrl.Finish()
 		})
 	}
 }

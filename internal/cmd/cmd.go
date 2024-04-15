@@ -1,188 +1,219 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"sgit/internal/filesystem"
-	"sgit/internal/git"
-	"sgit/internal/github"
-	"sgit/internal/types"
+	"sgit/internal/logging"
 	"strings"
 	"sync"
+)
 
-	"github.com/manifoldco/promptui"
+const (
+	UpToDate RepositoryState = iota + 1
+	UpToDateWithLocalChanges
+	HasMergeConflicts
+	HasUncommittedChanges
+	HasUncommittedChangesAndBehindUpstream
+	NoUpstreamRepo
 )
 
 type (
+	RepositoryState int
+
+	GithubRepository struct {
+		FullName string `json:"full_name"`
+		SshUrl   string `json:"ssh_url"`
+	}
+
 	Github interface {
-		GetPrimaryLanguageForRepo(n string) (string, error)
-		GetAllRepos() ([]types.GithubRepository, error)
+		GetPrimaryLanguageForRepo(name string) (string, error)
+		GetAllRepos() ([]GithubRepository, error)
+		GetCommitHash(name, branch string) (string, error)
 	}
 
 	Filesystem interface {
 		CreateDirectory(path string) error
 		Exists(path string) (bool, error)
+		ListDirectories(path string, depth int) ([]string, error)
+	}
+
+	TUI interface {
+		Handle(repository GithubRepository, state RepositoryState) error
 	}
 
 	Git interface {
-		CloneRepo(r types.GithubRepository, path string) error
-		HasLocalChanges(path string) (bool, error)
-		PushLocalChanges(path string) error
-		StashLocalChanges(path string) error
-		ResetLocalChanges(path string) error
-		PullLatestChanges(path string) error
+		GetBranchName(path string) (string, error)
+		CloneRepo(r GithubRepository, path string) error
+		HasUncommittedChanges(path string) (bool, error)
+		HasMergeConflicts(path string) (bool, error)
+		PullLatest(path string) error
+		GetCommitHashes(path string) ([]string, error)
 	}
 
 	refreshCommand struct {
+		logger     *logging.Logger
 		github     Github
 		git        Git
 		filesystem Filesystem
+		tui        TUI
 		targetDir  string
+		repoStates map[string]RepositoryState
+		mutex      sync.RWMutex
 	}
 )
 
-func NewRefreshCommand() (*refreshCommand, error) {
-	token, ok := os.LookupEnv("GITHUB_TOKEN")
-	if !ok {
-		return nil, errors.New("Unset environment variable: GITHUB_TOKEN")
-	}
-
-	org, ok := os.LookupEnv("GITHUB_ORG")
-	if !ok {
-		return nil, errors.New("Unset environment variable: GITHUB_ORG")
-	}
-
-	targetDir, ok := os.LookupEnv("CODE_HOME_DIR")
-	if !ok {
-		return nil, errors.New("Unset environment variable: CODE_HOME_DIR")
-	}
-
-	githubClient := github.NewClient(token, org)
-	gitClient := git.NewClient()
-	filesystemClient := filesystem.NewClient()
-	return newRefreshCommand(githubClient, gitClient, filesystemClient, targetDir), nil
+func (r GithubRepository) Name() string {
+	p := strings.Split(r.FullName, "/")
+	return p[len(p)-1]
 }
 
-func newRefreshCommand(github Github, git Git, filesystem Filesystem, targetDir string) *refreshCommand {
-	return &refreshCommand{github, git, filesystem, targetDir}
+func NewRefreshCommand(logger *logging.Logger, github Github, git Git, filesystem Filesystem, tui TUI, targetDir string) *refreshCommand {
+	return &refreshCommand{
+		logger:     logger,
+		github:     github,
+		git:        git,
+		filesystem: filesystem,
+		tui:        tui,
+		targetDir:  targetDir,
+		repoStates: make(map[string]RepositoryState),
+	}
 }
 
-func (c *refreshCommand) refresh(repo types.GithubRepository) (*repositoryState, error) {
+func (c *refreshCommand) remoteToLocalRepoRefresh(repo GithubRepository) error {
 	lang, err := c.github.GetPrimaryLanguageForRepo(repo.Name())
 	if err != nil {
-		return nil, err
+		return c.wrapError(err, "github.GetPrimaryLanguageForRepo failed for "+repo.Name())
 	}
 
 	baseDir := fmt.Sprintf("%s/%s", c.targetDir, strings.ToLower(lang))
 	path := fmt.Sprintf("%s/%s", baseDir, repo.Name())
+
 	exists, err := c.filesystem.Exists(path)
 	if err != nil {
-		return nil, err
+		return c.wrapError(err, "filesystem.Exists failed for "+repo.Name())
 	}
 
 	if !exists {
 		err = c.filesystem.CreateDirectory(path)
 		if err != nil {
-			return nil, err
+			return c.wrapError(err, "filesystem.CreateDirectory failed for "+path)
 		}
+
 		err = c.git.CloneRepo(repo, baseDir)
 		if err != nil {
-			return nil, err
+			return c.wrapError(err, "git.CloneRepo failed for "+repo.Name())
 		}
-		return &repositoryState{repo, false, path}, nil
+
+		return c.tui.Handle(repo, UpToDate)
 	}
 
-	hasLocalChanges, err := c.git.HasLocalChanges(path)
+	branch, err := c.git.GetBranchName(path)
 	if err != nil {
-		return nil, err
+		return c.wrapError(err, "git.GetBranchName failed for "+repo.Name())
+	}
+
+	//TODO: update these to be branch aware
+	hasLocalChanges, err := c.git.HasUncommittedChanges(path)
+	if err != nil {
+		return c.wrapError(err, "git.HasUncommittedChanges failed for "+repo.Name())
 	}
 
 	if !hasLocalChanges {
-		err = c.git.PullLatestChanges(path)
+		err = c.git.PullLatest(path)
 		if err != nil {
-			return nil, err
+			return c.wrapError(err, "git.PullLatestChanges failed for "+repo.Name())
 		}
-		return &repositoryState{repo, false, path}, nil
+
+		hasMergeConflicts, err := c.git.HasMergeConflicts(path)
+		if err != nil {
+			return c.wrapError(err, "git.HasMergeConflicts failed for "+repo.Name())
+		}
+
+		if hasMergeConflicts {
+			return c.tui.Handle(repo, HasMergeConflicts)
+		} else {
+			return c.tui.Handle(repo, UpToDate)
+		}
 	}
 
-	return &repositoryState{repo, true, path}, nil
+	upstreamCommitHash, err := c.github.GetCommitHash(repo.Name(), branch)
+	if err != nil {
+		return c.wrapError(err, "github.GetLatestCommitHash failed for repo.Name()")
+	}
+
+	localCommitHashes, err := c.git.GetCommitHashes(path)
+	if err != nil {
+		return c.wrapError(err, "git.GetCurrentCommitHash failed for repo.Name()")
+	}
+
+	for _, localHashCommitHash := range localCommitHashes {
+		if upstreamCommitHash == localHashCommitHash {
+			return c.tui.Handle(repo, HasUncommittedChanges)
+		}
+	}
+
+	return c.tui.Handle(repo, HasUncommittedChangesAndBehindUpstream)
 }
 
-type repositoryState struct {
-	r               types.GithubRepository
-	hasLocalChanges bool
-	path            string
+func (c *refreshCommand) localToRemoteRepoRefresh(path string) {
+	p := strings.Split(path, "/")
+	name := p[len(p)-1]
+
+	_, ok := c.getRepoState(name)
+	if !ok {
+		c.setRepoState(name, NoUpstreamRepo)
+	}
 }
 
-func (c *refreshCommand) Run() error {
-	var wg sync.WaitGroup
+func (c *refreshCommand) setRepoState(repoName string, state RepositoryState) {
+	c.mutex.Lock()
+	c.repoStates[repoName] = state
+	c.mutex.Unlock()
+}
+
+func (c *refreshCommand) getRepoState(repoName string) (RepositoryState, bool) {
+	c.mutex.RLock()
+	defer c.mutex.Unlock()
+	value, ok := c.repoStates[repoName]
+	return value, ok
+}
+
+func (c *refreshCommand) wrapError(err error, operation string) error {
+	return fmt.Errorf("%s: %s", operation, err.Error())
+}
+
+func (c *refreshCommand) Run() []error {
+	errs := []error{}
+	if e := c.remoteToLocalRefresh(); e != nil {
+		errs = append(errs, e...)
+	}
+
+	return errs
+}
+
+func (c *refreshCommand) remoteToLocalRefresh() []error {
 	allRepos, err := c.github.GetAllRepos()
+	if err != nil {
+		return []error{err}
+	}
+
+	errs := []error{}
+	for _, r := range allRepos {
+		if err := c.remoteToLocalRepoRefresh(r); err != nil {
+			wErr := c.wrapError(err, "cmd.remoteToLocalRepoRefresh failed for "+r.Name())
+			errs = append(errs, wErr)
+		}
+	}
+	return errs
+}
+
+func (c *refreshCommand) localToRemoteRefresh() error {
+	localRepos, err := c.filesystem.ListDirectories(c.targetDir, 2)
 	if err != nil {
 		return err
 	}
 
-	ac := make(chan struct {
-		*repositoryState
-		error
-	})
-
-	for _, r := range allRepos {
-		wg.Add(1)
-		go func(r types.GithubRepository, ac chan struct {
-			*repositoryState
-			error
-		}) {
-			defer wg.Done()
-			repoState, err := c.refresh(r)
-			ac <- struct {
-				*repositoryState
-				error
-			}{repoState, err}
-		}(r, ac)
+	for _, r := range localRepos {
+		c.localToRemoteRepoRefresh(r)
 	}
-
-	go func() {
-		for rs := range ac {
-			if !rs.hasLocalChanges {
-				continue
-			}
-
-			p := promptui.Select{
-				Label: rs.r.Name() + " has local changes",
-				Items: []string{"Skip", "Push", "Stash", "Reset"},
-			}
-
-			_, a, err := p.Run()
-			if err != nil {
-				panic(err)
-			}
-
-			if a == "Skip" {
-				continue
-			}
-
-			if a == "Push" {
-				err = c.git.PushLocalChanges(rs.path)
-			} else if a == "Stash" {
-				err = c.git.StashLocalChanges(rs.path)
-			} else if a == "Reset" {
-				err = c.git.ResetLocalChanges(rs.path)
-			}
-
-			if err != nil {
-				fmt.Println("Error: " + err.Error())
-				continue
-			}
-
-			err = c.git.PullLatestChanges(rs.path)
-			if err != nil {
-				fmt.Println("Error: " + err.Error())
-			}
-		}
-	}()
-
-	wg.Wait()
-	close(ac)
 	return nil
 }

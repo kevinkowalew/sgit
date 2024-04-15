@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sgit/internal/bash"
-	"sgit/internal/types"
+	"sgit/internal/cmd"
 	"strings"
 )
 
@@ -15,12 +15,13 @@ func NewClient() *gitClient {
 	return &gitClient{}
 }
 
-func (c gitClient) CloneRepo(r types.GithubRepository, path string) error {
+func (c gitClient) CloneRepo(r cmd.GithubRepository, path string) error {
 	cmd := fmt.Sprintf("git clone %s", r.SshUrl)
-	return bash.Execute(cmd, path)
+	_, err := bash.Execute(cmd, path)
+	return err
 }
 
-func (c gitClient) HasLocalChanges(path string) (bool, error) {
+func (c gitClient) HasUncommittedChanges(path string) (bool, error) {
 	gitCmd := "git status | grep 'nothing to commit, working tree clean'  | wc -l"
 
 	cmd := exec.Command("bash", "-c", gitCmd)
@@ -35,22 +36,40 @@ func (c gitClient) HasLocalChanges(path string) (bool, error) {
 }
 
 func (c gitClient) PushLocalChanges(path string) error {
-	hasChanges, err := c.HasLocalChanges(path)
+	hasChanges, err := c.HasUncommittedChanges(path)
 	if err != nil || !hasChanges {
 		return err
 	}
 
-	return bash.Execute("git add . && git commit -m 'work in progress' && git push", path)
+	_, err = bash.Execute("git add . && git commit -m 'work in progress' && git push", path)
+	return err
 }
 
 func (c gitClient) StashLocalChanges(path string) error {
-	return bash.Execute("git add . && git stash", path)
+	_, err := bash.Execute("git add . && git stash", path)
+	return err
 }
 
 func (c gitClient) ResetLocalChanges(path string) error {
-	return bash.Execute("git add . && git reset --hard", path)
+	_, err := bash.Execute("git add . && git reset --hard", path)
+	return err
 }
 
-func (c gitClient) PullLatestChanges(path string) error {
-	return bash.Execute("git fetch && git pull", path)
+func (c gitClient) PullLatest(path string) error {
+	_, err := bash.Execute("git fetch && git pull", path)
+	return err
+}
+
+func (c gitClient) HasMergeConflicts(path string) (bool, error) {
+	return false, nil
+}
+
+func (c gitClient) GetCommitHashes(path string) ([]string, error) {
+	// TODO: implement me
+	//return bash.Execute("git log | head -n 1 | awk '{print($2)}'", path)
+	return []string{}, nil
+}
+
+func (c gitClient) GetBranchName(path string) (string, error) {
+	return "", nil
 }
