@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"sgit/internal/logging"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -94,13 +93,12 @@ func TestRemoteToLocalRefresh(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			l := logging.New()
 			github = NewMockGithub(ctrl)
 			git = NewMockGit(ctrl)
 			filesystem = NewMockFilesystem(ctrl)
 			tui = NewMockTUI(ctrl)
 
-			cmd := NewRefreshCommand(l, github, git, filesystem, tui, baseDir)
+			cmd := NewRefreshCommand(github, git, filesystem, tui, baseDir)
 			tc.defineExpects()
 			if err := cmd.remoteToLocalRepoRefresh(repo); err != nil {
 				t.FailNow()

@@ -3,7 +3,6 @@ package git
 import (
 	"fmt"
 	"os/exec"
-	"sgit/internal/bash"
 	"sgit/internal/cmd"
 	"strings"
 )
@@ -17,7 +16,7 @@ func NewClient() *gitClient {
 
 func (c gitClient) CloneRepo(r cmd.GithubRepository, path string) error {
 	cmd := fmt.Sprintf("git clone %s", r.SshUrl)
-	_, err := bash.Execute(cmd, path)
+	_, err := execute(cmd, path)
 	return err
 }
 
@@ -41,22 +40,22 @@ func (c gitClient) PushLocalChanges(path string) error {
 		return err
 	}
 
-	_, err = bash.Execute("git add . && git commit -m 'work in progress' && git push", path)
+	_, err = execute("git add . && git commit -m 'work in progress' && git push", path)
 	return err
 }
 
 func (c gitClient) StashLocalChanges(path string) error {
-	_, err := bash.Execute("git add . && git stash", path)
+	_, err := execute("git add . && git stash", path)
 	return err
 }
 
 func (c gitClient) ResetLocalChanges(path string) error {
-	_, err := bash.Execute("git add . && git reset --hard", path)
+	_, err := execute("git add . && git reset --hard", path)
 	return err
 }
 
 func (c gitClient) PullLatest(path string) error {
-	_, err := bash.Execute("git fetch && git pull", path)
+	_, err := execute("git fetch && git pull", path)
 	return err
 }
 
@@ -66,10 +65,20 @@ func (c gitClient) HasMergeConflicts(path string) (bool, error) {
 
 func (c gitClient) GetCommitHashes(path string) ([]string, error) {
 	// TODO: implement me
-	//return bash.Execute("git log | head -n 1 | awk '{print($2)}'", path)
+	//return execute("git log | head -n 1 | awk '{print($2)}'", path)
 	return []string{}, nil
 }
 
 func (c gitClient) GetBranchName(path string) (string, error) {
 	return "", nil
+}
+
+func execute(cmd, workingDir string) (string, error) {
+	c := exec.Command("bash", "-c", cmd)
+	if workingDir != "" {
+		c.Dir = workingDir
+	}
+
+	b, err := c.Output()
+	return string(b), err
 }

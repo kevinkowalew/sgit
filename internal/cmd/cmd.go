@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"sgit/internal/logging"
 	"strings"
 	"sync"
 )
@@ -50,7 +49,6 @@ type (
 	}
 
 	refreshCommand struct {
-		logger     *logging.Logger
 		github     Github
 		git        Git
 		filesystem Filesystem
@@ -66,9 +64,8 @@ func (r GithubRepository) Name() string {
 	return p[len(p)-1]
 }
 
-func NewRefreshCommand(logger *logging.Logger, github Github, git Git, filesystem Filesystem, tui TUI, targetDir string) *refreshCommand {
+func NewRefreshCommand(github Github, git Git, filesystem Filesystem, tui TUI, targetDir string) *refreshCommand {
 	return &refreshCommand{
-		logger:     logger,
 		github:     github,
 		git:        git,
 		filesystem: filesystem,
