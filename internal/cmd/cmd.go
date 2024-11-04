@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sgit/internal/logging"
 	"strings"
 	"sync"
 )
@@ -21,6 +22,14 @@ type (
 	GithubRepository struct {
 		FullName string `json:"full_name"`
 		SshUrl   string `json:"ssh_url"`
+		Fork     bool   `json:"fork"`
+		Owner    Owner  `json:"owner"`
+		Language string
+		State    RepositoryState
+	}
+
+	Owner struct {
+		Login string `json:"login"`
 	}
 
 	Github interface {
@@ -36,7 +45,7 @@ type (
 	}
 
 	TUI interface {
-		Handle(repository GithubRepository, state RepositoryState) error
+		Handle(repos []GithubRepository) error
 	}
 
 	Git interface {
@@ -49,6 +58,7 @@ type (
 	}
 
 	refreshCommand struct {
+		logger     *logging.Logger
 		github     Github
 		git        Git
 		filesystem Filesystem
@@ -64,21 +74,41 @@ func (r GithubRepository) Name() string {
 	return p[len(p)-1]
 }
 
-func NewRefreshCommand(github Github, git Git, filesystem Filesystem, tui TUI, targetDir string) *refreshCommand {
+func (rs RepositoryState) String() string {
+	switch rs {
+	case UpToDate:
+		return "UpToDate"
+	case UpToDateWithLocalChanges:
+		return "UpToDateWithLocalChanges"
+	case HasMergeConflicts:
+		return "HasMergeConflicts"
+	case HasUncommittedChanges:
+		return "HasUncommittedChanges"
+	case HasUncommittedChangesAndBehindUpstream:
+		return "HasUncommittedChangesAndBehindUpstream"
+	case NoUpstreamRepo:
+		return "NoUpstreamRepo"
+	}
+
+	return ""
+}
+
+func NewRefreshCommand(l *logging.Logger, gh Github, g Git, fs Filesystem, tui TUI, targetDir string) *refreshCommand {
 	return &refreshCommand{
-		github:     github,
-		git:        git,
-		filesystem: filesystem,
+		logger:     l,
+		github:     gh,
+		git:        g,
+		filesystem: fs,
 		tui:        tui,
 		targetDir:  targetDir,
 		repoStates: make(map[string]RepositoryState),
 	}
 }
 
-func (c *refreshCommand) remoteToLocalRepoRefresh(repo GithubRepository) error {
+func (c *refreshCommand) remoteToLocalRepoRefresh(repo GithubRepository) (RepositoryState, error) {
 	lang, err := c.github.GetPrimaryLanguageForRepo(repo.Name())
 	if err != nil {
-		return c.wrapError(err, "github.GetPrimaryLanguageForRepo failed for "+repo.Name())
+		return 0, fmt.Errorf("github.GetPrimaryLanguageForRepo failed: %w", err)
 	}
 
 	baseDir := fmt.Sprintf("%s/%s", c.targetDir, strings.ToLower(lang))
@@ -86,69 +116,70 @@ func (c *refreshCommand) remoteToLocalRepoRefresh(repo GithubRepository) error {
 
 	exists, err := c.filesystem.Exists(path)
 	if err != nil {
-		return c.wrapError(err, "filesystem.Exists failed for "+repo.Name())
+		return 0, fmt.Errorf("filesystem.Exists: %w", err)
 	}
 
 	if !exists {
+		// create & clone repo if it exist
 		err = c.filesystem.CreateDirectory(path)
 		if err != nil {
-			return c.wrapError(err, "filesystem.CreateDirectory failed for "+path)
+			return 0, fmt.Errorf("filesystem.CreateDirectory failed for "+path+": %w", err)
 		}
 
 		err = c.git.CloneRepo(repo, baseDir)
 		if err != nil {
-			return c.wrapError(err, "git.CloneRepo failed for "+repo.Name())
+			return 0, fmt.Errorf("git.CloneRepo failed: %w")
 		}
 
-		return c.tui.Handle(repo, UpToDate)
+		return UpToDate, nil
 	}
 
 	branch, err := c.git.GetBranchName(path)
 	if err != nil {
-		return c.wrapError(err, "git.GetBranchName failed for "+repo.Name())
+		return 0, fmt.Errorf("git.GetBranchName failed: %w", err)
 	}
 
 	//TODO: update these to be branch aware
 	hasLocalChanges, err := c.git.HasUncommittedChanges(path)
 	if err != nil {
-		return c.wrapError(err, "git.HasUncommittedChanges failed for "+repo.Name())
+		return 0, fmt.Errorf("git.HasUncommittedChanges failed: %w", err)
 	}
 
 	if !hasLocalChanges {
 		err = c.git.PullLatest(path)
 		if err != nil {
-			return c.wrapError(err, "git.PullLatestChanges failed for "+repo.Name())
+			return 0, fmt.Errorf("git.PullLatestChanges failed: %w", err)
 		}
 
 		hasMergeConflicts, err := c.git.HasMergeConflicts(path)
 		if err != nil {
-			return c.wrapError(err, "git.HasMergeConflicts failed for "+repo.Name())
+			return 0, fmt.Errorf("git.HasMergeConflicts failed: %w", err)
 		}
 
 		if hasMergeConflicts {
-			return c.tui.Handle(repo, HasMergeConflicts)
+			return HasMergeConflicts, nil
 		} else {
-			return c.tui.Handle(repo, UpToDate)
+			return UpToDate, nil
 		}
 	}
 
 	upstreamCommitHash, err := c.github.GetCommitHash(repo.Name(), branch)
 	if err != nil {
-		return c.wrapError(err, "github.GetLatestCommitHash failed for repo.Name()")
+		return 0, fmt.Errorf("github.GetLatestCommitHash failed: %w", err)
 	}
 
 	localCommitHashes, err := c.git.GetCommitHashes(path)
 	if err != nil {
-		return c.wrapError(err, "git.GetCurrentCommitHash failed for repo.Name()")
+		return 0, fmt.Errorf("git.GetCurrentCommitHash failed: %w", err)
 	}
 
 	for _, localHashCommitHash := range localCommitHashes {
 		if upstreamCommitHash == localHashCommitHash {
-			return c.tui.Handle(repo, HasUncommittedChanges)
+			return HasUncommittedChanges, nil
 		}
 	}
 
-	return c.tui.Handle(repo, HasUncommittedChangesAndBehindUpstream)
+	return HasUncommittedChangesAndBehindUpstream, nil
 }
 
 func (c *refreshCommand) localToRemoteRepoRefresh(path string) {
@@ -174,33 +205,52 @@ func (c *refreshCommand) getRepoState(repoName string) (RepositoryState, bool) {
 	return value, ok
 }
 
-func (c *refreshCommand) wrapError(err error, operation string) error {
-	return fmt.Errorf("%s: %s", operation, err.Error())
-}
-
-func (c *refreshCommand) Run() []error {
-	errs := []error{}
-	if e := c.remoteToLocalRefresh(); e != nil {
-		errs = append(errs, e...)
+func (c *refreshCommand) Run() error {
+	if err := c.remoteToLocalRefresh(); err != nil {
+		return err
 	}
 
-	return errs
+	return nil
 }
 
-func (c *refreshCommand) remoteToLocalRefresh() []error {
-	allRepos, err := c.github.GetAllRepos()
+func (c *refreshCommand) remoteToLocalRefresh() error {
+	repos, err := c.github.GetAllRepos()
 	if err != nil {
-		return []error{err}
+		return fmt.Errorf("github.GetAllRepos failed: %w", err)
 	}
 
-	errs := []error{}
-	for _, r := range allRepos {
-		if err := c.remoteToLocalRepoRefresh(r); err != nil {
-			wErr := c.wrapError(err, "cmd.remoteToLocalRepoRefresh failed for "+r.Name())
-			errs = append(errs, wErr)
+	results := make(chan GithubRepository, len(repos))
+
+	var wg sync.WaitGroup
+	for _, repo := range repos {
+		wg.Add(1)
+		go func(r GithubRepository, results chan<- GithubRepository) {
+			defer wg.Done()
+			state, err := c.remoteToLocalRepoRefresh(r)
+			if err != nil {
+				c.logger.Error(err, "remoteToLocalRefresh failed", "repo_name", r.FullName, "repo_ssh_url", r.SshUrl)
+			}
+			r.State = state
+			results <- r
+		}(repo, results)
+
+	}
+
+	wg.Wait()
+	close(results)
+
+	toHandle := make([]GithubRepository, 0)
+	for repo := range results {
+		if repo.Language != "" {
+			toHandle = append(toHandle, repo)
 		}
 	}
-	return errs
+
+	if err := c.tui.Handle(toHandle); err != nil {
+		c.logger.Error(err, "tui.Handle failed")
+	}
+
+	return nil
 }
 
 func (c *refreshCommand) localToRemoteRefresh() error {

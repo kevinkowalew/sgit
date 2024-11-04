@@ -6,6 +6,7 @@ import (
 	"sgit/git"
 	"sgit/github"
 	"sgit/internal/cmd"
+	"sgit/internal/logging"
 	"sgit/tui"
 )
 
@@ -15,7 +16,7 @@ func main() {
 		panic("Unset environment variable: GITHUB_TOKEN")
 	}
 
-	org, ok := os.LookupEnv("GITHUB_ORG")
+	username, ok := os.LookupEnv("GITHUB_USERNAME")
 	if !ok {
 		panic("Unset environment variable: GITHUB_ORG")
 	}
@@ -25,12 +26,13 @@ func main() {
 		panic("Unset environment variable: CODE_HOME_DIR")
 	}
 
-	github := github.NewClient(token, org)
+	logger := logging.New()
+	github := github.NewClient(token, username)
 	git := git.NewClient()
 	filesystem := filesystem.NewClient()
 	tui := tui.New()
 
-	rc := cmd.NewRefreshCommand(github, git, filesystem, tui, targetDir)
+	rc := cmd.NewRefreshCommand(logger, github, git, filesystem, tui, targetDir)
 	if err := rc.Run(); err != nil {
 		panic(err)
 	}

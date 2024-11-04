@@ -10,16 +10,15 @@ import (
 )
 
 type client struct {
-	token string
-	org   string
+	token, username string
 }
 
-func NewClient(token, org string) *client {
-	return &client{token, org}
+func NewClient(token, username string) *client {
+	return &client{token, username}
 }
 
 func (c client) GetPrimaryLanguageForRepo(n string) (string, error) {
-	url := fmt.Sprintf("/repos/%s/%s/languages", c.org, n)
+	url := fmt.Sprintf("/repos/%s/%s/languages", c.username, n)
 	langs, err := executeRequest[map[string]int](url, c.token)
 	if err != nil {
 		return "", err
@@ -37,12 +36,21 @@ func (c client) GetPrimaryLanguageForRepo(n string) (string, error) {
 }
 
 func (c client) GetAllRepos() ([]cmd.GithubRepository, error) {
-	url := fmt.Sprintf("/orgs/%s/repos", c.org)
+	url := fmt.Sprintf("/user/repos?affiliation=owner&per_page=100")
 	repos, err := executeRequest[[]cmd.GithubRepository](url, c.token)
 	if err != nil {
 		return nil, err
 	}
-	return *repos, err
+
+	rv := make([]cmd.GithubRepository, 0)
+	for _, repo := range *repos {
+		// skip forks
+		if repo.Fork {
+			continue
+		}
+		rv = append(rv, repo)
+	}
+	return rv, err
 }
 
 func (c client) GetCommitHash(name, branch string) (string, error) {
@@ -72,7 +80,7 @@ func executeRequest[T any](endpoint, token string) (*T, error) {
 	}
 
 	if res.StatusCode != 200 {
-		msg := fmt.Sprintf("Non-200 status code returned (%s): %s", res.Status, body)
+		msg := fmt.Sprintf("%s: %s", res.Status, body)
 		return nil, errors.New(msg)
 	}
 

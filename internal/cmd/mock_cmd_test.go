@@ -169,17 +169,17 @@ func (m *MockTUI) EXPECT() *MockTUIMockRecorder {
 }
 
 // Handle mocks base method.
-func (m *MockTUI) Handle(repository GithubRepository, state RepositoryState) error {
+func (m *MockTUI) Handle(repos []GithubRepository) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Handle", repository, state)
+	ret := m.ctrl.Call(m, "Handle", repos)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Handle indicates an expected call of Handle.
-func (mr *MockTUIMockRecorder) Handle(repository, state interface{}) *gomock.Call {
+func (mr *MockTUIMockRecorder) Handle(repos interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Handle", reflect.TypeOf((*MockTUI)(nil).Handle), repository, state)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Handle", reflect.TypeOf((*MockTUI)(nil).Handle), repos)
 }
 
 // MockGit is a mock of Git interface.
