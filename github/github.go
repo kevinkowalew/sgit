@@ -1,25 +1,38 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"sgit/internal/cmd"
 )
 
-type client struct {
-	token, username string
+type (
+	Repository struct {
+		FullName string `json:"full_name"`
+		SshUrl   string `json:"ssh_url"`
+		Fork     bool   `json:"fork"`
+		Owner    *Owner `json:"owner"`
+	}
+
+	Owner struct {
+		Login string `json:"login"`
+	}
+
+	Client struct {
+		token, username string
+	}
+)
+
+func NewClient(token, username string) *Client {
+	return &Client{token, username}
 }
 
-func NewClient(token, username string) *client {
-	return &client{token, username}
-}
-
-func (c client) GetPrimaryLanguageForRepo(n string) (string, error) {
-	url := fmt.Sprintf("/repos/%s/%s/languages", c.username, n)
-	langs, err := executeRequest[map[string]int](url, c.token)
+func (c Client) GetPrimaryLanguageForRepo(ctx context.Context, name string) (string, error) {
+	url := fmt.Sprintf("/repos/%s/%s/languages", c.username, name)
+	langs, err := executeRequest[map[string]int](ctx, url, c.token)
 	if err != nil {
 		return "", err
 	}
@@ -35,30 +48,29 @@ func (c client) GetPrimaryLanguageForRepo(n string) (string, error) {
 	return primaryLanguage, nil
 }
 
-func (c client) GetAllRepos() ([]cmd.GithubRepository, error) {
+func (c Client) GetAllRepos(ctx context.Context) ([]Repository, error) {
+	// TODO: update to paginate correctly
 	url := fmt.Sprintf("/user/repos?affiliation=owner&per_page=100")
-	repos, err := executeRequest[[]cmd.GithubRepository](url, c.token)
+	repos, err := executeRequest[[]Repository](ctx, url, c.token)
 	if err != nil {
 		return nil, err
 	}
 
-	rv := make([]cmd.GithubRepository, 0)
+	rv := make([]Repository, 0)
 	for _, repo := range *repos {
-		// skip forks
-		if repo.Fork {
-			continue
-		}
+		// TODO: add flag to skip forks
 		rv = append(rv, repo)
 	}
 	return rv, err
 }
 
-func (c client) GetCommitHash(name, branch string) (string, error) {
+func (c Client) GetCommitHash(name, branch string) (string, error) {
 	// TODO: implement me
 	return "", nil
 }
 
-func executeRequest[T any](endpoint, token string) (*T, error) {
+func executeRequest[T any](_ context.Context, endpoint, token string) (*T, error) {
+	// TODO: actually use the context.Context instance in the request
 	url := "https://api.github.com" + endpoint
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

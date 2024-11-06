@@ -1,13 +1,12 @@
 package main
 
 import (
+	"context"
 	"os"
-	"sgit/filesystem"
-	"sgit/git"
-	"sgit/github"
 	"sgit/internal/cmd"
+	"sgit/internal/local"
 	"sgit/internal/logging"
-	"sgit/tui"
+	"sgit/internal/remote"
 )
 
 func main() {
@@ -26,14 +25,13 @@ func main() {
 		panic("Unset environment variable: CODE_HOME_DIR")
 	}
 
-	logger := logging.New()
-	github := github.NewClient(token, username)
-	git := git.NewClient()
-	filesystem := filesystem.NewClient()
-	tui := tui.New()
+	ctx := context.Background()
+	l := logging.New()
+	li := local.NewInterfactor(l, targetDir)
+	ri := remote.NewInteractor(l, token, username)
+	cmd := cmd.New(l, ri, li)
 
-	rc := cmd.NewRefreshCommand(logger, github, git, filesystem, tui, targetDir)
-	if err := rc.Run(); err != nil {
+	if err := cmd.Run(ctx); err != nil {
 		panic(err)
 	}
 }
