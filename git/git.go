@@ -28,8 +28,9 @@ func (c Git) GetSshUrl(path string) (string, error) {
 	return strings.Split(string(o), "\n")[0], nil
 }
 
-func (c Git) CloneRepo(r cmd.RemoteRepository, path string) error {
+func (c Git) Clone(r cmd.RemoteRepository, path string) error {
 	cmd := fmt.Sprintf("git clone %s", r.SshUrl)
+	fmt.Println(cmd)
 	_, err := execute(cmd, path)
 	return err
 }

@@ -3,9 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sgit/internal/logging"
-
-	"github.com/fatih/color"
+	"strings"
 )
 
 const (
@@ -16,6 +16,7 @@ const (
 	HasUncommittedChangesAndBehindUpstream
 	NoUpstreamRepo
 	FailedToClone
+	IncorrectLanguageParentDirectory
 )
 
 type (
@@ -38,7 +39,8 @@ type (
 
 	LocalInteractor interface {
 		GetRepos() ([]LocalRepository, error)
-		Clone(ctx context.Context, repo Repository) error
+		Clone(repo RemoteRepository) error
+		BaseDir() string
 	}
 
 	RemoteInteractor interface {
@@ -66,6 +68,10 @@ func (rs RepositoryState) String() string {
 		return "HasUncommittedChangesAndBehindUpstream"
 	case NoUpstreamRepo:
 		return "NoUpstreamRepo"
+	case FailedToClone:
+		return "FailedToClone"
+	case IncorrectLanguageParentDirectory:
+		return "IncorrectLanguageParentDirectory"
 	}
 
 	return ""
@@ -80,7 +86,6 @@ func New(l *logging.Logger, ri RemoteInteractor, li LocalInteractor) *cmd {
 }
 
 func (c *cmd) Run(ctx context.Context) error {
-
 	remoteRepos, err := c.remote.GetRepos(ctx)
 	if err != nil {
 		return fmt.Errorf("remote.GetRepos failed: %w", err)
@@ -96,78 +101,93 @@ func (c *cmd) Run(ctx context.Context) error {
 		return fmt.Errorf("local.GetRepos failed: %w", err)
 	}
 
-	localRepoMap := make(map[string]LocalRepository, 0)
+	localRepoMap := make(map[string][]LocalRepository, 0)
 	for _, repo := range localRepos {
-		localRepoMap[repo.Name] = repo
+		e, _ := localRepoMap[repo.Name]
+		localRepoMap[repo.Name] = append(e, repo)
 	}
 
-	repoStateMap := make(map[Repository]RepositoryState, 0)
+	type state struct {
+		fork      bool
+		fullPath  string
+		repoState RepositoryState
+	}
 
-	for _, repo := range remoteRepos {
-		_, ok := localRepoMap[repo.Name]
+	repoStateMap := make(map[Repository]state, 0)
+	for _, remote := range remoteRepos {
+		locals, ok := localRepoMap[remote.Repository.Name]
 		if !ok {
-			if err := c.local.Clone(ctx, repo.Repository); err != nil {
-				c.logger.Error(err, "local.Clone failed", "name", repo.Name)
-				repoStateMap[repo.Repository] = FailedToClone
-				continue
+			if err := c.local.Clone(remote); err != nil {
+				c.logger.Error(err, "local.Clone failed", "name", remote.Repository.Name)
+				repoStateMap[remote.Repository] = state{
+					fork:      remote.Fork,
+					fullPath:  filepath.Join(c.local.BaseDir(), remote.Language, remote.Name),
+					repoState: FailedToClone,
+				}
+			} else {
+				repoStateMap[remote.Repository] = state{
+					fork:      remote.Fork,
+					fullPath:  filepath.Join(c.local.BaseDir(), remote.Language, remote.Name),
+					repoState: UpToDate,
+				}
 			}
 		}
 
-		repoStateMap[repo.Repository] = UpToDate
+		for _, local := range locals {
+			_, ok := repoStateMap[remote.Repository]
+			if ok {
+				continue
+			}
+
+			if local.Repository.Language != remote.Language {
+				repoStateMap[remote.Repository] = state{
+					fork:      remote.Fork,
+					fullPath:  filepath.Join(c.local.BaseDir(), local.Language, remote.Name),
+					repoState: IncorrectLanguageParentDirectory,
+				}
+			} else {
+				repoStateMap[remote.Repository] = state{
+					fork:      remote.Fork,
+					fullPath:  filepath.Join(c.local.BaseDir(), local.Language, remote.Name),
+					repoState: UpToDate,
+				}
+			}
+		}
 	}
 
-	for _, repo := range localRepos {
-		_, ok := remoteRepoMap[repo.Name]
+	for _, local := range localRepos {
+		_, ok := remoteRepoMap[local.Repository.Name]
 		if !ok {
-			repoStateMap[repo.Repository] = NoUpstreamRepo
+			repoStateMap[local.Repository] = state{
+				fullPath:  filepath.Join(c.local.BaseDir(), local.Language, local.Name),
+				repoState: NoUpstreamRepo,
+			}
 		}
 
-		if repo.UncommitedChanges {
-			repoStateMap[repo.Repository] = HasUncommittedChanges
+		if local.UncommitedChanges {
+			repoStateMap[local.Repository] = state{
+				fullPath:  filepath.Join(c.local.BaseDir(), local.Language, local.Name),
+				repoState: HasUncommittedChanges,
+			}
 		}
 	}
 
-	type repoStatePair struct {
-		repo  Repository
-		state RepositoryState
-	}
-	langToRepo := make(map[string][]repoStatePair, 0)
+	langToRepo := make(map[string][]state, 0)
 
 	for repo, state := range repoStateMap {
 		e, _ := langToRepo[repo.Language]
-		langToRepo[repo.Language] = append(e, repoStatePair{repo, state})
+		langToRepo[repo.Language] = append(e, state)
 	}
 
-	rainbow := []color.Attribute{
-		color.FgBlue, color.FgMagenta, color.FgCyan,
-	}
-
-	i := 0
-	for lang, pairs := range langToRepo {
-		for _, pair := range pairs {
-			d := color.New(
-				rainbow[i%(len(rainbow)-1)],
-				color.Bold,
-			)
-			d.Print(lang + " ")
-
-			d = color.New(color.FgWhite)
-			d.Print(pair.repo.Name + " ")
-
-			switch pair.state {
-			case UpToDate:
-				d = color.New(color.FgGreen, color.Bold)
-				d.Println(pair.state.String())
-			case HasUncommittedChanges:
-				d = color.New(color.FgYellow, color.Bold)
-				d.Println(pair.state.String())
-			default:
-				d = color.New(color.FgRed, color.Bold)
-				d.Println(pair.state.String())
+	for lang, states := range langToRepo {
+		for _, state := range states {
+			fork := "Fork"
+			if !state.fork {
+				fork = "Not" + fork
 			}
-
+			parts := []string{lang, state.fullPath, state.repoState.String(), fork}
+			fmt.Println(strings.Join(parts, " "))
 		}
-		i += 1
 	}
 
 	return nil

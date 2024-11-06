@@ -72,6 +72,6 @@ func (i Interactor) normalizeAndDetermineLanguage(ctx context.Context, r github.
 		i.logger.Error(err, "github.GetPrimaryLanguageForRepo failed", "name", name)
 	}
 
-	normalized.Language = lang
+	normalized.Language = strings.ToLower(lang)
 	return normalized
 }

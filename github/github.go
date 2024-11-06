@@ -31,8 +31,8 @@ func NewClient(token, username string) *Client {
 }
 
 func (c Client) GetPrimaryLanguageForRepo(ctx context.Context, name string) (string, error) {
-	url := fmt.Sprintf("/repos/%s/%s/languages", c.username, name)
-	langs, err := executeRequest[map[string]int](ctx, url, c.token)
+	e := fmt.Sprintf("/repos/%s/%s/languages", c.username, name)
+	langs, err := executeRequest[map[string]int](ctx, http.MethodGet, e, c.token)
 	if err != nil {
 		return "", err
 	}
@@ -50,8 +50,8 @@ func (c Client) GetPrimaryLanguageForRepo(ctx context.Context, name string) (str
 
 func (c Client) GetAllRepos(ctx context.Context) ([]Repository, error) {
 	// TODO: update to paginate correctly
-	url := fmt.Sprintf("/user/repos?affiliation=owner&per_page=100")
-	repos, err := executeRequest[[]Repository](ctx, url, c.token)
+	e := fmt.Sprintf("/user/repos?affiliation=owner&per_page=100")
+	repos, err := executeRequest[[]Repository](ctx, http.MethodGet, e, c.token)
 	if err != nil {
 		return nil, err
 	}
@@ -64,15 +64,19 @@ func (c Client) GetAllRepos(ctx context.Context) ([]Repository, error) {
 	return rv, err
 }
 
+func (c Client) CreateRepo(ctx context.Context, name string, private, template bool) error {
+	return nil
+}
+
 func (c Client) GetCommitHash(name, branch string) (string, error) {
 	// TODO: implement me
 	return "", nil
 }
 
-func executeRequest[T any](_ context.Context, endpoint, token string) (*T, error) {
+func executeRequest[T any](_ context.Context, verb, endpoint, token string) (*T, error) {
 	// TODO: actually use the context.Context instance in the request
 	url := "https://api.github.com" + endpoint
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(verb, url, nil)
 	if err != nil {
 		return nil, err
 	}

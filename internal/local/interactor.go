@@ -1,7 +1,6 @@
 package local
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"sgit/filesystem"
@@ -21,11 +20,8 @@ type (
 
 	Git interface {
 		GetSshUrl(fullPath string) (string, error)
-		GetBranchName(path string) (string, error)
+		Clone(repo cmd.RemoteRepository, path string) error
 		HasUncommittedChanges(path string) (bool, error)
-		HasMergeConflicts(path string) (bool, error)
-		PullLatest(path string) error
-		GetCommitHashes(path string) ([]string, error)
 	}
 
 	Interactor struct {
@@ -114,6 +110,15 @@ func (i Interactor) normalize(dir string) cmd.LocalRepository {
 	return repo
 }
 
-func (li Interactor) Clone(ctx context.Context, repo cmd.Repository) error {
-	return nil
+func (li Interactor) Clone(repo cmd.RemoteRepository) error {
+	parent := filepath.Join(li.baseDir, repo.Language)
+	if err := li.fs.CreateDirectory(parent); err != nil {
+		return fmt.Errorf("fs.CreateDirectory failed: %w", err)
+	}
+
+	return li.git.Clone(repo, parent)
+}
+
+func (li Interactor) BaseDir() string {
+	return li.baseDir
 }
