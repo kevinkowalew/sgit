@@ -43,7 +43,7 @@ $ sgit sync java,go
 ```
 
 ## Example Use Cases
-- `sgit` embraces the unix philisophy. This enables more nuanced use cases to be achieved using piping.
+- `sgit` embraces the unix philosophy. This enables more nuanced use cases to be achieved using piping.
 
 ```bash
 # clone your repos to a new machine
