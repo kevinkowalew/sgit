@@ -3,9 +3,9 @@
 - When working with `git` repos on multiple machines it can become hard to keep track of the state of things in each respective environment.
 - `sgit` aims to alleviate this issue, giving you visibility into the state of local `git` repositories against their remote counterparts.
 
-## Directory Structure
+## Opinions
 - `sgit` clones all repos to a specified `CODE_HOME_DIR` environment variable.
-- As shown below, repos are organized by name  
+- As shown below, repos are organized in subdirectories by their respective language 
 ```
 └── <CODE_HOME_DIR>/
     ├── go/
