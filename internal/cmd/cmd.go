@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"sgit/internal/logging"
-	"strings"
+	"sgit/internal/set"
+
+	"github.com/fatih/color"
 )
 
 const (
@@ -17,6 +19,7 @@ const (
 	NoUpstreamRepo
 	FailedToClone
 	IncorrectLanguageParentDirectory
+	NotClonedLocally
 )
 
 type (
@@ -47,10 +50,12 @@ type (
 		GetRepos(ctx context.Context) ([]RemoteRepository, error)
 	}
 
-	cmd struct {
-		logger *logging.Logger
-		local  LocalInteractor
-		remote RemoteInteractor
+	Cmd struct {
+		logger                         *logging.Logger
+		local                          LocalInteractor
+		remote                         RemoteInteractor
+		cloneMissingRepos, outputRepos bool
+		langsFilter                    *set.Set[string]
 	}
 )
 
@@ -72,20 +77,26 @@ func (rs RepositoryState) String() string {
 		return "FailedToClone"
 	case IncorrectLanguageParentDirectory:
 		return "IncorrectLanguageParentDirectory"
+	case NotClonedLocally:
+		return "NotClonedLocally"
 	}
 
 	return ""
 }
 
-func New(l *logging.Logger, ri RemoteInteractor, li LocalInteractor) *cmd {
-	return &cmd{
-		logger: l,
-		remote: ri,
-		local:  li,
+func New(l *logging.Logger, ri RemoteInteractor, li LocalInteractor,
+	cloneMissingRepos, outputRepos bool, langsFilter *set.Set[string]) *Cmd {
+	return &Cmd{
+		logger:            l,
+		remote:            ri,
+		local:             li,
+		cloneMissingRepos: cloneMissingRepos,
+		outputRepos:       outputRepos,
+		langsFilter:       langsFilter,
 	}
 }
 
-func (c *cmd) Run(ctx context.Context) error {
+func (c *Cmd) Run(ctx context.Context) error {
 	remoteRepos, err := c.remote.GetRepos(ctx)
 	if err != nil {
 		return fmt.Errorf("remote.GetRepos failed: %w", err)
@@ -93,7 +104,9 @@ func (c *cmd) Run(ctx context.Context) error {
 
 	remoteRepoMap := make(map[string]RemoteRepository, 0)
 	for _, repo := range remoteRepos {
-		remoteRepoMap[repo.Name] = repo
+		if c.shouldInclude(repo.Repository) {
+			remoteRepoMap[repo.Name] = repo
+		}
 	}
 
 	localRepos, err := c.local.GetRepos()
@@ -115,8 +128,21 @@ func (c *cmd) Run(ctx context.Context) error {
 
 	repoStateMap := make(map[Repository]state, 0)
 	for _, remote := range remoteRepos {
+		if !c.shouldInclude(remote.Repository) {
+			continue
+		}
+
 		locals, ok := localRepoMap[remote.Repository.Name]
 		if !ok {
+			if !c.cloneMissingRepos {
+				repoStateMap[remote.Repository] = state{
+					fork:      remote.Fork,
+					fullPath:  filepath.Join(c.local.BaseDir(), remote.Language, remote.Name),
+					repoState: NotClonedLocally,
+				}
+				continue
+			}
+
 			if err := c.local.Clone(remote); err != nil {
 				c.logger.Error(err, "local.Clone failed", "name", remote.Repository.Name)
 				repoStateMap[remote.Repository] = state{
@@ -134,6 +160,10 @@ func (c *cmd) Run(ctx context.Context) error {
 		}
 
 		for _, local := range locals {
+			if !c.shouldInclude(local.Repository) {
+				continue
+			}
+
 			_, ok := repoStateMap[remote.Repository]
 			if ok {
 				continue
@@ -155,7 +185,14 @@ func (c *cmd) Run(ctx context.Context) error {
 		}
 	}
 
+	if !c.outputRepos {
+		return nil
+	}
+
 	for _, local := range localRepos {
+		if !c.shouldInclude(local.Repository) {
+			continue
+		}
 		_, ok := remoteRepoMap[local.Repository.Name]
 		if !ok {
 			repoStateMap[local.Repository] = state{
@@ -179,16 +216,51 @@ func (c *cmd) Run(ctx context.Context) error {
 		langToRepo[repo.Language] = append(e, state)
 	}
 
+	rainbow := []color.Attribute{
+		color.FgBlue, color.FgMagenta, color.FgCyan,
+	}
+	i := 0
 	for lang, states := range langToRepo {
 		for _, state := range states {
-			fork := "Fork"
-			if !state.fork {
-				fork = "Not" + fork
+			d := color.New(
+				rainbow[i%(len(rainbow)-1)],
+				color.Bold,
+			)
+			d.Print(lang + " ")
+
+			d = color.New(color.FgWhite)
+			d.Print(state.fullPath + " ")
+
+			switch state.repoState {
+			case UpToDate:
+				d = color.New(color.FgGreen, color.Bold)
+			case HasUncommittedChanges:
+				d = color.New(color.FgYellow, color.Bold)
+			case NotClonedLocally:
+				d = color.New(color.FgHiRed, color.Bold)
+			default:
+				d = color.New(color.FgRed, color.Bold)
 			}
-			parts := []string{lang, state.fullPath, state.repoState.String(), fork}
-			fmt.Println(strings.Join(parts, " "))
+			d.Print(state.repoState.String())
+
+			if state.fork {
+				d = color.New(color.FgHiCyan)
+				d.Println(" Fork")
+			} else {
+				d.Println()
+			}
+
 		}
+		i += 1
 	}
 
 	return nil
+}
+
+func (c Cmd) shouldInclude(repo Repository) bool {
+	if c.langsFilter.Size() > 0 {
+		return c.langsFilter.Contains(repo.Language)
+	}
+
+	return true
 }

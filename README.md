@@ -11,12 +11,7 @@ export GITHUB_TOKEN=<github personal access token>
 export GITHUB_USERNAME=<github organization>
 export CODE_HOME_DIR=<path to root level code folder>
 ```
-#### Running the command
+#### Commands
 ```bash
-sgit
+sgit ls
 ```
-#### What does this do?
-1. ensures all organization repositories are cloned to `CODE_HOME_DIR` (organized in subfolders by language)
-2. checks all local repositories for changes. If found, you'll be prompted to address them (`push`, `reset`, `stash` or `ignore`).
-3. ensures all repositories and the current branch are up-to-date with the upstream
-
