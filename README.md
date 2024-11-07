@@ -29,7 +29,7 @@
 ## Subcommands
 ### `ls` - outputs local/remote repos
 #### Output format
-`<repo language>` `<full path to local repository>` `<state of repo` `<shown if repo is a fork of another repo>`
+`<repo language>` `<full path to local repository>` `<state of repo>` `<is fork>`
 ```bash
 $ sgit ls -langs java,go
 java /Users/kevin/code/java/openapi-generator NotClonedLocally Fork
