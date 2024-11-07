@@ -1,6 +1,6 @@
 # sgit 
 ## Intent
-- When working with muliple `git` repos on multiple machines it can become hard to keep track of the state of things in each respective environment.
+- When working with `git` repos on multiple machines it can become hard to keep track of the state of things in each respective environment.
 - `sgit` aims to alleviate this issue, giving you visibility into the state of local `git` repositories against their remote counterparts.
 
 ## Directory Structure
