@@ -39,7 +39,7 @@ go /Users/kevin/code/go/sgit HasUncommitedChanges
 ```
 ### `sync` - clones remote repos locally if needed
 ```bash
-$ sgit sync java,go
+$ sgit sync -langs java,go
 ```
 
 ## Example Use Cases
