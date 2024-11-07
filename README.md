@@ -37,7 +37,7 @@ java /Users/kevin/code/java/http-client UpToDate
 go /Users/kevin/code/go/sockets NoUpstreamRepo
 go /Users/kevin/code/go/sgit HasUncommitedChanges
 ```
-#### `sync` - clones remote repos locally if needed
+### `sync` - clones remote repos locally if needed
 ```bash
 $ sgit sync java,go
 ```
