@@ -23,7 +23,7 @@
     └── shell/
         └── dotfiles/
             ├── bash_profile.sh
-            └── -.tmuxconf
+            └── .tmuxconf
 ```
 
 ## Subcommands
