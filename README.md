@@ -56,6 +56,6 @@ sgit ls -langs java | grep Fork | awk `{print($2)}` | xargs rm -r
 ```
 
 ```bash
-# find all local repos that you need to create upstream repos for 
-sgit ls | grep NoUpstreamRepo
+# find local go repos that you need to create remote repos for 
+sgit ls -langs go | grep -v Fork | grep NoUpstreamRepo
 ```
