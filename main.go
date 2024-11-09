@@ -111,7 +111,7 @@ func createStatesSet(commaSeparated *string) *set.Set[string] {
 
 		found := false
 		for _, state := range states {
-			if strings.Contains(state, s) {
+			if strings.HasPrefix(state, s) {
 				found = true
 				rv.Add(state)
 			}
