@@ -173,6 +173,9 @@ func (c *Cmd) Run(ctx context.Context) error {
 
 			if local.Repository.Language != remote.Language {
 				s.repoState = IncorrectLanguageParentDirectory
+			} else if local.UncommitedChanges {
+				// TODO: update this to handle the UncommitedChanges & UpToDate
+				s.repoState = UncommittedChanges
 			} else {
 				s.repoState = UpToDate
 			}
@@ -197,17 +200,18 @@ func (c *Cmd) Run(ctx context.Context) error {
 			s := state{
 				fullPath: filepath.Join(c.local.BaseDir(), local.Language, local.Name),
 			}
-			_, ok := remoteRepoMap[local.Repository.Name]
+			if _, ok := remoteRepoMap[local.Repository.Name]; ok {
+				continue
+			}
+
 			switch {
-			case !ok && !local.GitRepo:
+			case !local.GitRepo:
 				s.repoState = NotGitRepo
-			case !ok:
-				s.repoState = NoRemoteRepo
 			case local.UncommitedChanges:
-				// TODO: update this to handle
+				// TODO: update this to handle the UncommitedChanges & UpToDate
 				s.repoState = UncommittedChanges
 			default:
-				s.repoState = UpToDate
+				s.repoState = NoRemoteRepo
 			}
 
 			if c.statesSet.Size() > 0 && !c.statesSet.Contains(s.repoState.String()) {
