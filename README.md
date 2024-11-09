@@ -52,10 +52,10 @@ sgit sync
 
 ```bash
 # delete all local java forked repositories
-sgit ls -langs java | grep Fork | awk `{print($2)}` | xargs rm -r
+sgit ls -langs java -forks true | awk `{print($2)}` | xargs rm -r
 ```
 
 ```bash
 # find local go repos that you need to create remote repos for 
-sgit ls -langs go | grep -v Fork | grep NoUpstreamRepo
+sgit ls -langs go -forks false -state NoRemoteRepo
 ```
