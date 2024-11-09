@@ -12,14 +12,11 @@ import (
 
 const (
 	UpToDate RepositoryState = iota + 1
-	UpToDateWithLocalChanges
-	HasMergeConflicts
-	HasUncommittedChanges
-	HasUncommittedChangesAndBehindUpstream
-	NoUpstreamRepo
-	FailedToClone
+	UncommittedChanges
+	NotGitRepo
+	NoRemoteRepo
 	IncorrectLanguageParentDirectory
-	NotClonedLocally
+	NotCloned
 )
 
 type (
@@ -55,7 +52,9 @@ type (
 		local                          LocalInteractor
 		remote                         RemoteInteractor
 		cloneMissingRepos, outputRepos bool
-		langsFilter                    *set.Set[string]
+		langsSet                       *set.Set[string]
+		statesSet                      *set.Set[string]
+		forks                          *bool
 	}
 )
 
@@ -63,36 +62,38 @@ func (rs RepositoryState) String() string {
 	switch rs {
 	case UpToDate:
 		return "UpToDate"
-	case UpToDateWithLocalChanges:
-		return "UpToDateWithLocalChanges"
-	case HasMergeConflicts:
-		return "HasMergeConflicts"
-	case HasUncommittedChanges:
-		return "HasUncommittedChanges"
-	case HasUncommittedChangesAndBehindUpstream:
-		return "HasUncommittedChangesAndBehindUpstream"
-	case NoUpstreamRepo:
-		return "NoUpstreamRepo"
-	case FailedToClone:
-		return "FailedToClone"
+	case UncommittedChanges:
+		return "UncommittedChanges"
+	case NotGitRepo:
+		return "NotGitRepo"
+	case NoRemoteRepo:
+		return "NoRemoteRepo"
 	case IncorrectLanguageParentDirectory:
 		return "IncorrectLanguageParentDirectory"
-	case NotClonedLocally:
-		return "NotClonedLocally"
+	case NotCloned:
+		return "NotCloned"
 	}
 
 	return ""
 }
 
-func New(l *logging.Logger, ri RemoteInteractor, li LocalInteractor,
-	cloneMissingRepos, outputRepos bool, langsFilter *set.Set[string]) *Cmd {
+func New(
+	l *logging.Logger,
+	ri RemoteInteractor,
+	li LocalInteractor,
+	cloneMissingRepos, outputRepos bool,
+	langsSet, statesSet *set.Set[string],
+	forks *bool,
+) *Cmd {
 	return &Cmd{
 		logger:            l,
 		remote:            ri,
 		local:             li,
 		cloneMissingRepos: cloneMissingRepos,
 		outputRepos:       outputRepos,
-		langsFilter:       langsFilter,
+		langsSet:          langsSet,
+		statesSet:         statesSet,
+		forks:             forks,
 	}
 }
 
@@ -128,40 +129,41 @@ func (c *Cmd) Run(ctx context.Context) error {
 
 	repoStateMap := make(map[Repository]state, 0)
 	for _, remote := range remoteRepos {
-		if !c.shouldInclude(remote.Repository) {
+		if !c.shouldIncludeRemote(remote) {
 			continue
+		}
+
+		s := state{
+			fork:     remote.Fork,
+			fullPath: filepath.Join(c.local.BaseDir(), remote.Language, remote.Name),
 		}
 
 		locals, ok := localRepoMap[remote.Repository.Name]
 		if !ok {
 			if !c.cloneMissingRepos {
-				repoStateMap[remote.Repository] = state{
-					fork:      remote.Fork,
-					fullPath:  filepath.Join(c.local.BaseDir(), remote.Language, remote.Name),
-					repoState: NotClonedLocally,
-				}
+				s.repoState = NotCloned
+			} else if err := c.local.Clone(remote); err != nil {
+				c.logger.Error(err, "local.Clone failed", "name", remote.Repository.Name)
+				s.repoState = NotCloned
+			} else {
+				s.repoState = UpToDate
+			}
+
+			if c.statesSet.Size() > 0 && !c.statesSet.Contains(s.repoState.String()) {
 				continue
 			}
 
-			if err := c.local.Clone(remote); err != nil {
-				c.logger.Error(err, "local.Clone failed", "name", remote.Repository.Name)
-				repoStateMap[remote.Repository] = state{
-					fork:      remote.Fork,
-					fullPath:  filepath.Join(c.local.BaseDir(), remote.Language, remote.Name),
-					repoState: FailedToClone,
-				}
-			} else {
-				repoStateMap[remote.Repository] = state{
-					fork:      remote.Fork,
-					fullPath:  filepath.Join(c.local.BaseDir(), remote.Language, remote.Name),
-					repoState: UpToDate,
-				}
-			}
+			repoStateMap[remote.Repository] = s
 		}
 
 		for _, local := range locals {
 			if !c.shouldInclude(local.Repository) {
 				continue
+			}
+
+			s := state{
+				fork:     remote.Fork,
+				fullPath: filepath.Join(c.local.BaseDir(), local.Language, remote.Name),
 			}
 
 			_, ok := repoStateMap[remote.Repository]
@@ -170,18 +172,16 @@ func (c *Cmd) Run(ctx context.Context) error {
 			}
 
 			if local.Repository.Language != remote.Language {
-				repoStateMap[remote.Repository] = state{
-					fork:      remote.Fork,
-					fullPath:  filepath.Join(c.local.BaseDir(), local.Language, remote.Name),
-					repoState: IncorrectLanguageParentDirectory,
-				}
+				s.repoState = IncorrectLanguageParentDirectory
 			} else {
-				repoStateMap[remote.Repository] = state{
-					fork:      remote.Fork,
-					fullPath:  filepath.Join(c.local.BaseDir(), local.Language, remote.Name),
-					repoState: UpToDate,
-				}
+				s.repoState = UpToDate
 			}
+
+			if c.statesSet.Size() > 0 && !c.statesSet.Contains(s.repoState.String()) {
+				continue
+			}
+
+			repoStateMap[remote.Repository] = s
 		}
 	}
 
@@ -189,23 +189,32 @@ func (c *Cmd) Run(ctx context.Context) error {
 		return nil
 	}
 
-	for _, local := range localRepos {
-		if !c.shouldInclude(local.Repository) {
-			continue
-		}
-		_, ok := remoteRepoMap[local.Repository.Name]
-		if !ok {
-			repoStateMap[local.Repository] = state{
-				fullPath:  filepath.Join(c.local.BaseDir(), local.Language, local.Name),
-				repoState: NoUpstreamRepo,
+	if c.forks == nil || !*c.forks {
+		for _, local := range localRepos {
+			if !c.shouldInclude(local.Repository) {
+				continue
 			}
-		}
+			s := state{
+				fullPath: filepath.Join(c.local.BaseDir(), local.Language, local.Name),
+			}
+			_, ok := remoteRepoMap[local.Repository.Name]
+			switch {
+			case !ok && local.GitRepo:
+				s.repoState = NotGitRepo
+			case !ok:
+				s.repoState = NoRemoteRepo
+			case local.UncommitedChanges:
+				// TODO: update this to handle
+				s.repoState = UncommittedChanges
+			default:
+				s.repoState = UpToDate
+			}
 
-		if local.UncommitedChanges {
-			repoStateMap[local.Repository] = state{
-				fullPath:  filepath.Join(c.local.BaseDir(), local.Language, local.Name),
-				repoState: HasUncommittedChanges,
+			if c.statesSet.Size() > 0 && !c.statesSet.Contains(s.repoState.String()) {
+				continue
 			}
+
+			repoStateMap[local.Repository] = s
 		}
 	}
 
@@ -234,9 +243,9 @@ func (c *Cmd) Run(ctx context.Context) error {
 			switch state.repoState {
 			case UpToDate:
 				d = color.New(color.FgGreen, color.Bold)
-			case HasUncommittedChanges:
+			case UncommittedChanges:
 				d = color.New(color.FgYellow, color.Bold)
-			case NotClonedLocally:
+			case NotCloned:
 				d = color.New(color.FgHiRed, color.Bold)
 			default:
 				d = color.New(color.FgRed, color.Bold)
@@ -257,9 +266,27 @@ func (c *Cmd) Run(ctx context.Context) error {
 	return nil
 }
 
+func (c Cmd) shouldIncludeRemote(repo RemoteRepository) bool {
+	if !c.shouldInclude(repo.Repository) {
+		return false
+	}
+
+	if c.forks == nil {
+		return true
+	}
+
+	if *c.forks && !repo.Fork {
+		return false
+	} else if !*c.forks && repo.Fork {
+		return false
+	}
+
+	return true
+}
+
 func (c Cmd) shouldInclude(repo Repository) bool {
-	if c.langsFilter.Size() > 0 {
-		return c.langsFilter.Contains(repo.Language)
+	if c.langsSet.Size() > 0 {
+		return c.langsSet.Contains(repo.Language)
 	}
 
 	return true

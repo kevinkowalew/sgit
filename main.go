@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"sgit/internal/cmd"
 	"sgit/internal/local"
@@ -39,38 +40,50 @@ func main() {
 	li := local.NewInterfactor(l, targetDir)
 	ri := remote.NewInteractor(l, token, username)
 
-	lsCmd := flag.NewFlagSet("ls", flag.ExitOnError)
-	lsLangs := lsCmd.String("langs", "", "comma-separated list of languages to target")
-
-	syncCmd := flag.NewFlagSet("sync", flag.ExitOnError)
-	syncLangs := syncCmd.String("langs", "", "comma-separated list of languages to target")
+	lsCmd, lsLangs, lsStates, lsForks := createFlagSet("ls")
+	syncCmd, syncLangs, syncStates, syncForks := createFlagSet("sync")
 
 	if len(os.Args) < 2 {
 		panic("You must specify a subcommand: ls, sync")
 	}
 
 	cloneMissingRepos, outputRepos := false, false
-	var langMap *set.Set[string]
+	var langsSet *set.Set[string]
+	var statesSet *set.Set[string]
+	var forks *bool
+
 	switch os.Args[1] {
 	case ls:
 		lsCmd.Parse(os.Args[2:])
-		langMap = createLangsMap(lsLangs)
+		langsSet = createLangSet(lsLangs)
+		statesSet = createStatesSet(lsStates)
+		forks = createForks(*lsForks)
 		outputRepos = true
 	case sync:
 		syncCmd.Parse(os.Args[2:])
-		langMap = createLangsMap(syncLangs)
+		langsSet = createLangSet(syncLangs)
+		statesSet = createStatesSet(syncStates)
+		forks = createForks(*syncForks)
 		cloneMissingRepos = true
 	default:
 		panic("unsupported subcommand " + os.Args[1])
 	}
 
-	cmd := cmd.New(l, ri, li, cloneMissingRepos, outputRepos, langMap)
+	cmd := cmd.New(l, ri, li, cloneMissingRepos, outputRepos, langsSet, statesSet, forks)
 	if err := cmd.Run(ctx); err != nil {
 		panic(err)
 	}
 }
 
-func createLangsMap(commaSeparated *string) *set.Set[string] {
+func createFlagSet(cmd string) (*flag.FlagSet, *string, *string, *string) {
+	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
+	langs := fs.String("langs", "", "comma-separated list of languages to target")
+	states := fs.String("states", "", "comma-separated list of states to target")
+	fork := fs.String("forks", "", "bool flag to conditionally target fork vs. non-forked repos")
+	return fs, langs, states, fork
+}
+
+func createLangSet(commaSeparated *string) *set.Set[string] {
 	rv := set.New[string]()
 	for _, lang := range strings.Split(*commaSeparated, ",") {
 		if len(lang) > 0 {
@@ -78,4 +91,57 @@ func createLangsMap(commaSeparated *string) *set.Set[string] {
 		}
 	}
 	return rv
+}
+
+func createStatesSet(commaSeparated *string) *set.Set[string] {
+	validStates := set.New(
+		cmd.UpToDate.String(),
+		cmd.UncommittedChanges.String(),
+		cmd.NotGitRepo.String(),
+		cmd.NoRemoteRepo.String(),
+		cmd.IncorrectLanguageParentDirectory.String(),
+		cmd.NotCloned.String(),
+	)
+
+	rv := set.New[string]()
+	for _, state := range strings.Split(*commaSeparated, ",") {
+		if len(state) == 0 {
+			continue
+		}
+
+		if !validStates.Contains(state) {
+			msg := fmt.Sprintf(
+				"\ninvalid -states flag: \"%s\" \nvalid flags: %s",
+				state,
+				strings.Join(validStates.Values(), " "),
+			)
+			panic(msg)
+		}
+
+		rv.Add(state)
+	}
+	return rv
+}
+
+func createForks(val string) *bool {
+	if len(val) == 0 {
+		return nil
+	}
+
+	var rv bool
+	switch val {
+	case "true":
+		rv = true
+		return &rv
+	case "false":
+		rv = false
+		return &rv
+	default:
+		msg := fmt.Sprintf(
+			"invalid -forks flag: \"%s\" \nvalid flags: %s",
+			val,
+			"true false",
+		)
+		panic(msg)
+	}
 }
