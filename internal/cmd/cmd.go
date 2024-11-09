@@ -246,9 +246,9 @@ func (c *Cmd) Run(ctx context.Context) error {
 			case UncommittedChanges:
 				d = color.New(color.FgYellow, color.Bold)
 			case NotCloned:
-				d = color.New(color.FgHiRed, color.Bold)
-			default:
 				d = color.New(color.FgRed, color.Bold)
+			default:
+				d = color.New(color.FgHiMagenta, color.Bold)
 			}
 			d.Print(state.repoState.String())
 

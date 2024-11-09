@@ -94,32 +94,40 @@ func createLangSet(commaSeparated *string) *set.Set[string] {
 }
 
 func createStatesSet(commaSeparated *string) *set.Set[string] {
-	validStates := set.New(
+	states := []string{
 		cmd.UpToDate.String(),
 		cmd.UncommittedChanges.String(),
 		cmd.NotGitRepo.String(),
 		cmd.NoRemoteRepo.String(),
 		cmd.IncorrectLanguageParentDirectory.String(),
 		cmd.NotCloned.String(),
-	)
+	}
 
 	rv := set.New[string]()
-	for _, state := range strings.Split(*commaSeparated, ",") {
-		if len(state) == 0 {
+	for _, s := range strings.Split(*commaSeparated, ",") {
+		if len(s) == 0 {
 			continue
 		}
 
-		if !validStates.Contains(state) {
+		found := false
+		for _, state := range states {
+			if strings.Contains(state, s) {
+				found = true
+				rv.Add(state)
+			}
+		}
+
+		if !found {
 			msg := fmt.Sprintf(
 				"\ninvalid -states flag: \"%s\" \nvalid flags: %s",
-				state,
-				strings.Join(validStates.Values(), " "),
+				s,
+				strings.Join(states, " "),
 			)
 			panic(msg)
 		}
 
-		rv.Add(state)
 	}
+
 	return rv
 }
 
