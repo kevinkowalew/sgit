@@ -199,7 +199,7 @@ func (c *Cmd) Run(ctx context.Context) error {
 			}
 			_, ok := remoteRepoMap[local.Repository.Name]
 			switch {
-			case !ok && local.GitRepo:
+			case !ok && !local.GitRepo:
 				s.repoState = NotGitRepo
 			case !ok:
 				s.repoState = NoRemoteRepo
