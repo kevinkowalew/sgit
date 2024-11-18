@@ -30,8 +30,8 @@ func New(token, username string) *Github {
 	return &Github{token, username}
 }
 
-func (c Github) GetPrimaryLanguageForRepo(ctx context.Context, name string) (string, error) {
-	e := fmt.Sprintf("/repos/%s/%s/languages", c.username, name)
+func (c Github) GetPrimaryLanguageForRepo(ctx context.Context, owner, name string) (string, error) {
+	e := fmt.Sprintf("/repos/%s/%s/languages", owner, name)
 	langs, err := executeRequest[map[string]int](ctx, http.MethodGet, e, c.token)
 	if err != nil {
 		return "", err

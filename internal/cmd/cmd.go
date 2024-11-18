@@ -7,7 +7,6 @@ import (
 	"sgit/internal/cmd/clone"
 	"sgit/internal/cmd/create"
 	"sgit/internal/cmd/ls"
-	"sgit/internal/env"
 
 	"github.com/spf13/cobra"
 )
@@ -24,12 +23,20 @@ var cmd = &cobra.Command{
 }
 
 func Execute() {
-	env.AssertExists(env.GithubToken, env.GithubUsername, env.CodeHomeDir)
+	assert("GITHUB_TOKEN")
+	assert("GITHUB_USERNAME")
+	assert("CODE_HOME_DIR")
 
 	ctx := context.Background()
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
+	}
+}
+
+func assert(envVar string) {
+	if _, ok := os.LookupEnv(envVar); !ok {
+		panic("Unset environment variable: " + envVar)
 	}
 }
 

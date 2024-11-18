@@ -14,20 +14,22 @@ import (
 )
 
 type Interactor struct {
-	logger     *logging.Logger
-	github     *github.Github
-	filesystem *filesystem.Filesystem
-	git        *git.Git
-	baseDir    string
+	logger            *logging.Logger
+	github            *github.Github
+	filesystem        *filesystem.Filesystem
+	git               *git.Git
+	username, baseDir string
 }
 
 func New() *Interactor {
 	baseDir := os.Getenv("CODE_HOME_DIR")
+	username := os.Getenv("GITHUB_USERNAME")
 	return &Interactor{
 		logging.New(),
-		github.New(os.Getenv("GITHUB_TOKEN"), os.Getenv("GITHUB_USERNAME")),
+		github.New(os.Getenv("GITHUB_TOKEN"), username),
 		filesystem.New(baseDir),
 		git.New(),
+		username,
 		baseDir,
 	}
 }
@@ -183,13 +185,13 @@ func (i Interactor) normalize(dir string) Repo {
 	return repo
 }
 
-func (i Interactor) Clone(repo Repo) error {
-	parent := filepath.Join(i.baseDir, repo.Language)
+func (i Interactor) Clone(lang, url string) error {
+	parent := filepath.Join(i.baseDir, lang)
 	if err := i.filesystem.CreateDirectory(parent); err != nil {
 		return fmt.Errorf("fs.CreateDirectory failed: %w", err)
 	}
 
-	return i.git.Clone(repo.SshUrl, parent)
+	return i.git.Clone(url, parent)
 }
 
 func (li Interactor) BaseDir() string {
@@ -240,7 +242,7 @@ func (i Interactor) normalizeAndFetchLanguage(ctx context.Context, r github.Repo
 		normalized.Owner = r.Owner.Login
 	}
 
-	lang, err := i.github.GetPrimaryLanguageForRepo(ctx, name)
+	lang, err := i.github.GetPrimaryLanguageForRepo(ctx, i.username, name)
 	if err != nil {
 		i.logger.Error(err, "github.GetPrimaryLanguageForRepo failed", "name", name)
 	} else {
@@ -249,4 +251,13 @@ func (i Interactor) normalizeAndFetchLanguage(ctx context.Context, r github.Repo
 	}
 
 	return normalized
+}
+
+func (i Interactor) GetPrimaryLanguageForRepo(ctx context.Context, owner, name string) (string, error) {
+	return i.github.GetPrimaryLanguageForRepo(ctx, owner, name)
+}
+
+func (i Interactor) CreateDir(lang string) error {
+	path := filepath.Join(i.baseDir, lang)
+	return i.filesystem.CreateDirectory(path)
 }
