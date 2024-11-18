@@ -21,16 +21,16 @@ type (
 		Login string `json:"login"`
 	}
 
-	Client struct {
+	Github struct {
 		token, username string
 	}
 )
 
-func NewClient(token, username string) *Client {
-	return &Client{token, username}
+func New(token, username string) *Github {
+	return &Github{token, username}
 }
 
-func (c Client) GetPrimaryLanguageForRepo(ctx context.Context, name string) (string, error) {
+func (c Github) GetPrimaryLanguageForRepo(ctx context.Context, name string) (string, error) {
 	e := fmt.Sprintf("/repos/%s/%s/languages", c.username, name)
 	langs, err := executeRequest[map[string]int](ctx, http.MethodGet, e, c.token)
 	if err != nil {
@@ -48,7 +48,7 @@ func (c Client) GetPrimaryLanguageForRepo(ctx context.Context, name string) (str
 	return primaryLanguage, nil
 }
 
-func (c Client) GetAllRepos(ctx context.Context) ([]Repository, error) {
+func (c Github) GetAllRepos(ctx context.Context) ([]Repository, error) {
 	// TODO: update to paginate correctly
 	e := fmt.Sprintf("/user/repos?affiliation=owner&per_page=100")
 	repos, err := executeRequest[[]Repository](ctx, http.MethodGet, e, c.token)
@@ -58,23 +58,17 @@ func (c Client) GetAllRepos(ctx context.Context) ([]Repository, error) {
 
 	rv := make([]Repository, 0)
 	for _, repo := range *repos {
-		// TODO: add flag to skip forks
 		rv = append(rv, repo)
 	}
 	return rv, err
 }
 
-func (c Client) CreateRepo(ctx context.Context, name string, private, template bool) error {
-	return nil
-}
-
-func (c Client) GetCommitHash(name, branch string) (string, error) {
-	// TODO: implement me
-	return "", nil
+func (c Github) RepoExists(ctx context.Context) ([]Repository, error) {
+	return nil, nil
 }
 
 func executeRequest[T any](_ context.Context, verb, endpoint, token string) (*T, error) {
-	// TODO: actually use the context.Context instance in the request
+	// TODO: update context to include timeout no request
 	url := "https://api.github.com" + endpoint
 	req, err := http.NewRequest(verb, url, nil)
 	if err != nil {

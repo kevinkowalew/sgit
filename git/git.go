@@ -3,7 +3,6 @@ package git
 import (
 	"fmt"
 	"os/exec"
-	"sgit/internal/cmd"
 	"strings"
 )
 
@@ -28,8 +27,8 @@ func (c Git) GetSshUrl(path string) (string, error) {
 	return strings.Split(string(o), "\n")[0], nil
 }
 
-func (c Git) Clone(r cmd.RemoteRepository, path string) error {
-	cmd := fmt.Sprintf("git clone %s", r.SshUrl)
+func (c Git) Clone(url, path string) error {
+	cmd := fmt.Sprintf("git clone %s", url)
 	_, err := execute(cmd, path)
 	return err
 }

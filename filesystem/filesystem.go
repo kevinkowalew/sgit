@@ -8,21 +8,21 @@ import (
 	"strings"
 )
 
-type FilesystemClient struct {
+type Filesystem struct {
 	baseDir string
 }
 
-func NewClient(baseDir string) *FilesystemClient {
-	return &FilesystemClient{baseDir}
+func New(baseDir string) *Filesystem {
+	return &Filesystem{baseDir}
 }
 
-func (fc FilesystemClient) CreateDirectory(relativePath string) error {
+func (f Filesystem) CreateDirectory(relativePath string) error {
 	cmd := fmt.Sprintf("mkdir -p %s", relativePath)
 	_, err := execute(cmd, "")
 	return err
 }
 
-func (fc FilesystemClient) Exists(path string) (bool, error) {
+func (f Filesystem) Exists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
 		return true, nil
@@ -33,9 +33,9 @@ func (fc FilesystemClient) Exists(path string) (bool, error) {
 	return false, err
 }
 
-func (fc FilesystemClient) ListDirectories() ([]string, error) {
+func (f Filesystem) ListDirectories() ([]string, error) {
 	cmd := "ls -l -d */*/ | awk '{print($9)}'"
-	output, err := execute(cmd, fc.baseDir)
+	output, err := execute(cmd, f.baseDir)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (fc FilesystemClient) ListDirectories() ([]string, error) {
 	dirs := make([]string, 0)
 	for _, line := range strings.Split(output, "\n") {
 		if line != "" {
-			dir := filepath.Join(fc.baseDir, line)
+			dir := filepath.Join(f.baseDir, line)
 			dirs = append(dirs, dir)
 		}
 	}
