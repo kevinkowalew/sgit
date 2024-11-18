@@ -1,11 +1,11 @@
 # sgit 
 ## Intent
-- When working on `git` repos across multiple machines it can become hard to keep track things.
+- When working on `git` repos across multiple machines it can become hard to keep track of things.
 - `sgit` aims to alleviate this issue, giving you visibility into the state of local `git` repositories against their remote counterparts.
 
 ## Opinions
 - `sgit` clones all repos to a specified `CODE_HOME_DIR` environment variable.
-- As shown below, repos are organized in subdirectories by their respective language 
+- As shown below, repos are organized in subdirectories by their respective languages
 ```
 └── <CODE_HOME_DIR>/
     ├── go/
@@ -27,7 +27,7 @@
 ```
 
 ## Subcommands
-### `ls` - outputs local/remote repos
+### `ls` - list local/remote repos
 #### Output format
 `<repo language>` `<full path to local repository>` `<state of repo>` `<is fork>`
 ```bash
