@@ -1,18 +1,22 @@
 package clone
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
 	"sgit/internal/interactor"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
 var (
-	langs, states *string
-	forks         *bool
+	langs *string
+	forks *bool
 )
 
 var Cmd = &cobra.Command{
@@ -24,17 +28,123 @@ var Cmd = &cobra.Command{
 
 func init() {
 	langs = Cmd.PersistentFlags().StringP("langs", "l", "", "comma-separated list of languages to target")
-	states = Cmd.PersistentFlags().StringP("states", "s", "", "comma-separated list of states to target")
 	forks = Cmd.PersistentFlags().BoolP("forks", "f", false, "target forked or non-forked repos")
 }
 
 func run(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return errors.New("fatal: You must specify a repository to clone.")
+	repos, err := getTargets(cmd, args)
+	if err != nil {
+		return err
 	}
 
-	url := args[0]
-	p := strings.Split(url, "/")
+	if proceed := showPrompt(repos); proceed {
+		return clone(repos)
+	}
+
+	return nil
+}
+
+func getTargets(cmd *cobra.Command, args []string) ([]interactor.Repo, error) {
+	if len(args) == 0 {
+		var forksFlag *bool
+		if cmd.Flags().Changed("forks") {
+			forksFlag = forks
+		}
+
+		filter, err := interactor.NewFilter(*langs, interactor.NotCloned.String(), forksFlag)
+		if err != nil {
+			return nil, fmt.Errorf("interactor.NewFilter failed: %w", err)
+		}
+
+		i := interactor.New()
+
+		langToRepoStatePairs, err := i.GetRepoStates(cmd.Context(), *filter)
+		if err != nil {
+			return nil, fmt.Errorf("interactor.GetRepoStates failed: %w", err)
+		}
+
+		rv := make([]interactor.Repo, 0)
+		for _, rsps := range langToRepoStatePairs {
+			for _, rsp := range rsps {
+				rv = append(rv, rsp.Repo)
+			}
+		}
+
+		return rv, nil
+	}
+
+	i := interactor.New()
+
+	type result struct {
+		interactor.Repo
+		err    error
+		exists bool
+	}
+
+	results := make(chan result, len(args))
+	errs := make([]error, 0)
+	var wg sync.WaitGroup
+	for _, arg := range args {
+		wg.Add(1)
+
+		go func(arg string) {
+			defer wg.Done()
+
+			repo := normalize(arg)
+			lang, err := i.GetPrimaryLanguageForRepo(cmd.Context(), repo.Owner, repo.Name)
+			if err != nil {
+				results <- result{
+					repo,
+					fmt.Errorf("i.GetPrimaryLanguageForRepo failed: %w", err),
+					false,
+				}
+				return
+			}
+			repo.Language = strings.ToLower(lang)
+
+			exists, err := i.Exists(repo)
+			if err != nil {
+				results <- result{
+					repo,
+					fmt.Errorf("i.Exists failed: %w", err),
+					false,
+				}
+				return
+			}
+
+			results <- result{
+				repo,
+				nil,
+				exists,
+			}
+		}(arg)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	rv := make([]interactor.Repo, 0)
+	for result := range results {
+		if result.err != nil {
+			errs = append(errs, result.err)
+			continue
+		} else if result.exists {
+			continue
+		} else {
+			rv = append(rv, result.Repo)
+		}
+	}
+
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+
+	return rv, nil
+}
+func normalize(arg string) interactor.Repo {
+	p := strings.Split(arg, "/")
 
 	name, username := "", ""
 	if len(p) > 1 {
@@ -47,16 +157,119 @@ func run(cmd *cobra.Command, args []string) error {
 		username = os.Getenv("GITHUB_USERNAME")
 	}
 
+	return interactor.Repo{
+		Name:  name,
+		Owner: username,
+		URL:   fmt.Sprintf("https://github.com/%s/%s", name, username),
+	}
+}
+
+func showPrompt(repos []interactor.Repo) bool {
+	if len(repos) == 0 {
+		return false
+	}
+	reader := bufio.NewReader(os.Stdin)
+
+	rainbow := []color.Attribute{
+		color.FgBlue, color.FgMagenta, color.FgCyan,
+	}
+
+	langIndex := make(map[string]int, 0)
+	for _, repo := range repos {
+		z, ok := langIndex[repo.Language]
+		if !ok {
+			langIndex[repo.Language] = len(langIndex)
+			z += 1
+		}
+
+		d := color.New(
+			rainbow[z%(len(rainbow)-1)],
+			color.Bold,
+		)
+
+		d.Print(repo.Language + " ")
+
+		d = color.New(color.FgWhite)
+		d.Print(repo.FullName())
+
+		if repo.Fork {
+			d = color.New(color.FgHiCyan)
+			d.Println(" Fork")
+		} else {
+			d.Println()
+		}
+	}
+
+	proceed := false
+	for {
+		msg := "You're about to clone 1 repo"
+		if len(repos) > 1 {
+			msg = fmt.Sprintf("You're about to clone %d repos", len(repos))
+		}
+		msg += ", would you like to proceed? (Y/N): "
+		d := color.New(color.FgGreen, color.Bold)
+		d.Print(msg)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(strings.ToUpper(input))
+
+		if input == "Y" {
+			proceed = true
+			break
+		} else if input == "N" {
+			break
+		} else {
+			fmt.Println("Invalid input. Please enter Y or N.")
+		}
+	}
+
+	return proceed
+}
+
+func clone(repos []interactor.Repo) error {
 	i := interactor.New()
-	lang, err := i.GetPrimaryLanguageForRepo(cmd.Context(), username, name)
-	if err != nil {
-		return fmt.Errorf("interactor.GetPrimaryLanguageForRepo failed: %w", err)
+
+	printProgress(0, len(repos))
+	complete := 0
+	errs := make([]error, 0)
+	results := make(chan error, len(repos))
+	var wg sync.WaitGroup
+	for _, repo := range repos {
+		wg.Add(1)
+		go func(r interactor.Repo) {
+			defer wg.Done()
+			results <- i.Clone(r)
+		}(repo)
 	}
 
-	if err := i.CreateDir(lang); err != nil {
-		return fmt.Errorf("interactor.CreateDir failed: %w", err)
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for err := range results {
+		complete += 1
+		printProgress(complete, len(repos))
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	url = fmt.Sprintf("https://github.com/%s/%s", username, name)
-	return i.Clone(lang, url)
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	return nil
+}
+
+func printProgress(current, total int) {
+	width := 50
+	percentage := float64(current) / float64(total)
+	barWidth := int(percentage * float64(width))
+	bar := strings.Repeat("#", barWidth) + strings.Repeat(" ", width-barWidth)
+	fmt.Printf("\r[%s] %3.0f%%", bar, percentage*100)
+
+	if current == total {
+		fmt.Printf("\r%s\r", strings.Repeat(" ", width+8))
+	}
 }

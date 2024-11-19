@@ -1,5 +1,10 @@
 package interactor
 
+import (
+	"os"
+	"path/filepath"
+)
+
 const (
 	UpToDate State = iota + 1
 	UncommittedChanges
@@ -10,9 +15,17 @@ const (
 )
 
 type Repo struct {
-	Name, Language, SshUrl, Path     string
+	Name, Language, Owner, URL       string
 	Fork, GitRepo, UncommitedChanges bool
-	Owner                            string
+}
+
+func (r Repo) FullName() string {
+	return filepath.Join(r.Owner, r.Name)
+}
+
+func (r Repo) Path() string {
+	baseDir := os.Getenv("CODE_HOME_DIR")
+	return filepath.Join(baseDir, r.Owner, r.Language, r.Name)
 }
 
 type RepoStatePair struct {

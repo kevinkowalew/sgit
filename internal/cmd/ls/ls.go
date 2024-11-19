@@ -48,8 +48,8 @@ func run(cmd *cobra.Command, args []string) error {
 		color.FgBlue, color.FgMagenta, color.FgCyan,
 	}
 	z := 0
-	for lang, rsp := range langToRepoStatePairs {
-		for _, state := range rsp {
+	for lang, rsps := range langToRepoStatePairs {
+		for _, rsp := range rsps {
 			d := color.New(
 				rainbow[z%(len(rainbow)-1)],
 				color.Bold,
@@ -57,9 +57,11 @@ func run(cmd *cobra.Command, args []string) error {
 			d.Print(lang + " ")
 
 			d = color.New(color.FgWhite)
-			d.Print(state.Path + " ")
+			d.Print(
+				fmt.Sprintf("%s/%s ", rsp.Owner, rsp.Name),
+			)
 
-			switch state.State {
+			switch rsp.State {
 			case interactor.UpToDate:
 				d = color.New(color.FgGreen, color.Bold)
 			case interactor.UncommittedChanges:
@@ -69,9 +71,9 @@ func run(cmd *cobra.Command, args []string) error {
 			default:
 				d = color.New(color.FgHiMagenta, color.Bold)
 			}
-			d.Print(state.State.String())
+			d.Print(rsp.State.String())
 
-			if state.Repo.Fork {
+			if rsp.Fork {
 				d = color.New(color.FgHiCyan)
 				d.Println(" Fork")
 			} else {

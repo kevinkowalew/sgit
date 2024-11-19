@@ -34,7 +34,7 @@ func (f Filesystem) Exists(path string) (bool, error) {
 }
 
 func (f Filesystem) ListDirectories() ([]string, error) {
-	cmd := "ls -l -d */*/ | awk '{print($9)}'"
+	cmd := "ls -l -d */*/*/ | awk '{print($9)}'"
 	output, err := execute(cmd, f.baseDir)
 	if err != nil {
 		return nil, err

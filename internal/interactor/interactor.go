@@ -51,12 +51,12 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 		rsp := RepoStatePair{
 			Repo: remote,
 		}
-		local, ok := localRepoMap[remote.Path]
+		local, ok := localRepoMap[remote.Path()]
 		if !ok {
 			rsp.State = NotCloned
 
 			if filter.ShouldIncludeRepoStatePair(rsp) {
-				repoStateMap[remote.Path] = rsp
+				repoStateMap[remote.Path()] = rsp
 			}
 			continue
 		}
@@ -75,13 +75,13 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 		}
 
 		if filter.ShouldIncludeRepoStatePair(rsp) {
-			repoStateMap[remote.Path] = rsp
+			repoStateMap[remote.Path()] = rsp
 		}
 
 	}
 
 	for _, local := range localRepoMap {
-		if _, ok := remoteRepos[local.Path]; ok {
+		if _, ok := remoteRepos[local.Path()]; ok {
 			continue
 		}
 
@@ -100,9 +100,8 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 		}
 
 		if filter.ShouldIncludeRepoStatePair(rsp) {
-			repoStateMap[local.Path] = rsp
+			repoStateMap[local.Path()] = rsp
 		}
-
 	}
 
 	rv := make(map[string][]RepoStatePair, 0)
@@ -114,7 +113,7 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 	return rv, nil
 }
 
-func (i Interactor) getLocalRepoMap(fiter Filter) (map[string]Repo, error) {
+func (i Interactor) getLocalRepoMap(filter Filter) (map[string]Repo, error) {
 	dirs, err := i.filesystem.ListDirectories()
 	if err != nil {
 		return nil, fmt.Errorf("filesystem.ListDirectories failed: %w", err)
@@ -135,7 +134,7 @@ func (i Interactor) getLocalRepoMap(fiter Filter) (map[string]Repo, error) {
 
 	rv := make(map[string]Repo, 0)
 	for repo := range results {
-		rv[repo.Path] = repo
+		rv[repo.Path()] = repo
 	}
 
 	return rv, nil
@@ -149,14 +148,19 @@ func (i Interactor) normalize(dir string) Repo {
 	p := strings.Split(dir, "/")
 	name := p[len(p)-1]
 	lang := ""
+	owner := ""
 	if len(p) > 1 {
 		lang = p[len(p)-2]
+	}
+
+	if len(p) > 2 {
+		owner = p[len(p)-3]
 	}
 
 	repo := Repo{
 		Name:     name,
 		Language: lang,
-		Path:     dir,
+		Owner:    owner,
 	}
 
 	fullPath := filepath.Join(dir, ".git/")
@@ -174,7 +178,7 @@ func (i Interactor) normalize(dir string) Repo {
 	if err != nil {
 		i.logger.Error(err, "git.GetSshUrl failed", "name", name, "lang", lang)
 	}
-	repo.SshUrl = sshUrl
+	repo.URL = sshUrl
 
 	uncommittedChanges, err := i.git.HasUncommittedChanges(dir)
 	if err != nil {
@@ -185,13 +189,17 @@ func (i Interactor) normalize(dir string) Repo {
 	return repo
 }
 
-func (i Interactor) Clone(lang, url string) error {
-	parent := filepath.Join(i.baseDir, lang)
+func (i Interactor) Clone(r Repo) error {
+	parent := filepath.Join(i.baseDir, r.Owner, r.Language)
 	if err := i.filesystem.CreateDirectory(parent); err != nil {
 		return fmt.Errorf("fs.CreateDirectory failed: %w", err)
 	}
 
-	return i.git.Clone(url, parent)
+	return i.git.Clone(r.URL, parent)
+}
+
+func (i Interactor) Exists(r Repo) (bool, error) {
+	return i.filesystem.Exists(r.Path())
 }
 
 func (li Interactor) BaseDir() string {
@@ -220,7 +228,7 @@ func (i Interactor) getRemoteRepos(ctx context.Context, filter Filter) (map[stri
 	rv := make(map[string]Repo, 0)
 	for repo := range results {
 		if filter.ShouldIncludeRepo(repo) {
-			rv[repo.Path] = repo
+			rv[repo.Path()] = repo
 		}
 	}
 
@@ -233,7 +241,7 @@ func (i Interactor) normalizeAndFetchLanguage(ctx context.Context, r github.Repo
 
 	normalized := Repo{
 		Name:    name,
-		SshUrl:  r.SshUrl,
+		URL:     r.SshUrl,
 		Fork:    r.Fork,
 		GitRepo: true,
 	}
@@ -247,7 +255,6 @@ func (i Interactor) normalizeAndFetchLanguage(ctx context.Context, r github.Repo
 		i.logger.Error(err, "github.GetPrimaryLanguageForRepo failed", "name", name)
 	} else {
 		normalized.Language = strings.ToLower(lang)
-		normalized.Path = filepath.Join(i.baseDir, normalized.Language, name)
 	}
 
 	return normalized
@@ -255,9 +262,4 @@ func (i Interactor) normalizeAndFetchLanguage(ctx context.Context, r github.Repo
 
 func (i Interactor) GetPrimaryLanguageForRepo(ctx context.Context, owner, name string) (string, error) {
 	return i.github.GetPrimaryLanguageForRepo(ctx, owner, name)
-}
-
-func (i Interactor) CreateDir(lang string) error {
-	path := filepath.Join(i.baseDir, lang)
-	return i.filesystem.CreateDirectory(path)
 }
