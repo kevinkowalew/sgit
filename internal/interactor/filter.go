@@ -38,7 +38,7 @@ func parseCommaSeparate(s string) []string {
 	return rv
 }
 
-func (f Filter) ShouldInclude(rsp RepoStatePair) bool {
+func (f Filter) Include(rsp RepoStatePair) bool {
 	if f.langs.Size() > 0 && !f.langs.Contains(rsp.Language) {
 		return false
 	}

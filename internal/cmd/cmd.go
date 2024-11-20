@@ -18,8 +18,8 @@ var (
 
 var cmd = &cobra.Command{
 	Use:   "sgit",
-	Short: "git synchronization made simple",
-	Long:  "git synchronization made simple",
+	Short: "git made simple",
+	Long:  "git made simple",
 }
 
 func Execute() {

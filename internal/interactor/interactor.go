@@ -36,12 +36,12 @@ func New() *Interactor {
 
 // GetRepos returns a map of programing langauges to a list of RepositoryState Pair
 func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[string][]RepoStatePair, error) {
-	remoteRepos, err := i.getRemoteRepos(ctx, filter)
+	remoteRepos, err := i.getRemoteRepos(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("i.getRemoteRepos failed: %w", err)
 	}
 
-	localRepoMap, err := i.getLocalRepoMap(filter)
+	localRepoMap, err := i.getLocalRepoMap()
 	if err != nil {
 		return nil, fmt.Errorf("local.GetRepos failed: %w", err)
 	}
@@ -97,19 +97,37 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 		repoStateMap[local.Path()] = rsp
 	}
 
-	rv := make(map[string][]RepoStatePair, 0)
-	for _, rsp := range repoStateMap {
-		if filter.ShouldInclude(rsp) {
-			e, _ := rv[rsp.Language]
-			rv[rsp.Language] = append(e, rsp)
-		}
+	var wg sync.WaitGroup
+	results := make(chan *RepoStatePair, len(repoStateMap))
 
+	for _, rsp := range repoStateMap {
+		go func(rsp RepoStatePair) {
+			if filter.Include(rsp) {
+				results <- &rsp
+			} else {
+				results <- nil
+			}
+		}(rsp)
+
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	rv := make(map[string][]RepoStatePair, 0)
+	for rsp := range results {
+		if rsp != nil {
+			e, _ := rv[rsp.Language]
+			rv[rsp.Language] = append(e, *rsp)
+		}
 	}
 
 	return rv, nil
 }
 
-func (i Interactor) getLocalRepoMap(filter Filter) (map[string]Repo, error) {
+func (i Interactor) getLocalRepoMap() (map[string]Repo, error) {
 	dirs, err := i.filesystem.ListDirectories()
 	if err != nil {
 		return nil, fmt.Errorf("filesystem.ListDirectories failed: %w", err)
@@ -125,8 +143,10 @@ func (i Interactor) getLocalRepoMap(filter Filter) (map[string]Repo, error) {
 		}(dir, results)
 	}
 
-	wg.Wait()
-	close(results)
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 
 	rv := make(map[string]Repo, 0)
 	for repo := range results {
@@ -220,7 +240,7 @@ func (li Interactor) BaseDir() string {
 	return li.baseDir
 }
 
-func (i Interactor) getRemoteRepos(ctx context.Context, filter Filter) (map[string]Repo, error) {
+func (i Interactor) getRemoteRepos(ctx context.Context) (map[string]Repo, error) {
 	repos, err := i.github.GetAllRepos(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("github.GetAllRepos failed: %w", err)
