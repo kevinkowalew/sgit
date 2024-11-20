@@ -1,6 +1,7 @@
 package interactor
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 )
@@ -17,6 +18,18 @@ const (
 type Repo struct {
 	Name, Language, Owner, URL       string
 	Fork, GitRepo, UncommitedChanges bool
+}
+
+func (r Repo) Validate() error {
+	if r.Name == "" {
+		return errors.New("repo.Name is empty")
+	} else if r.Language == "" {
+		return errors.New("repo.Language is empty")
+	} else if r.Owner == "" {
+		return errors.New("repo.Owner is empty")
+	}
+
+	return nil
 }
 
 func (r Repo) FullName() string {

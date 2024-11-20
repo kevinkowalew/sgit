@@ -1,4 +1,4 @@
-package clone
+package del
 
 import (
 	"bufio"
@@ -14,21 +14,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	langs *string
-	forks *bool
+const (
+	local  = "local"
+	remote = "remote"
+	both   = "both"
 )
 
-var Cmd = &cobra.Command{
-	Use:   "clone",
-	Short: "clone repo(s) based on provided filters",
-	Long:  "clone repo(s) based on provided filters",
-	RunE:  run,
-}
+var (
+	langs, states *string
+	forks         *bool
+
+	Cmd = &cobra.Command{
+		Use:   "delete",
+		Short: "delete repositories",
+		Long:  "delete repositories",
+		RunE:  run,
+	}
+)
 
 func init() {
 	langs = Cmd.PersistentFlags().StringP("langs", "l", "", "comma-separated list of languages to target")
 	forks = Cmd.PersistentFlags().BoolP("forks", "f", false, "target forked or non-forked repos")
+	states = Cmd.PersistentFlags().StringP("states", "s", "", "comma-separated list of states to target")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -37,10 +44,16 @@ func run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if proceed := showPrompt(repos); proceed {
-		return clone(repos)
+	if proceed := showPrompt(repos); !proceed {
+		return nil
 	}
 
+	selection := showLocalRemotePrompt()
+	if selection == "" {
+		return nil
+	}
+
+	//err := deleteRepos(cmd, repos, target)
 	return nil
 }
 
@@ -51,7 +64,7 @@ func getTargets(cmd *cobra.Command, args []string) ([]interactor.Repo, error) {
 			forksFlag = forks
 		}
 
-		filter, err := interactor.NewFilter(*langs, interactor.NotCloned.String(), forksFlag)
+		filter, err := interactor.NewFilter(*langs, *states, forksFlag)
 		if err != nil {
 			return nil, fmt.Errorf("interactor.NewFilter failed: %w", err)
 		}
@@ -143,6 +156,7 @@ func getTargets(cmd *cobra.Command, args []string) ([]interactor.Repo, error) {
 
 	return rv, nil
 }
+
 func normalize(arg string) interactor.Repo {
 	p := strings.Split(arg, "/")
 
@@ -175,31 +189,55 @@ func showPrompt(repos []interactor.Repo) bool {
 
 	proceed := false
 	for {
-		msg := "You're about to clone 1 repo"
+		msg := "You're about to delete 1 repo"
 		if len(repos) > 1 {
-			msg = fmt.Sprintf("You're about to clone %d repos", len(repos))
+			msg = fmt.Sprintf("You're about to delete %d repos", len(repos))
 		}
-		msg += ", would you like to proceed? (Y/N): "
+		msg += ", would you like to proceed? (y/n): "
 		d := color.New(color.FgGreen, color.Bold)
 		d.Print(msg)
 
 		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(strings.ToUpper(input))
+		input = strings.TrimSpace(strings.ToLower(input))
 
-		if input == "Y" {
+		if input == "y" {
 			proceed = true
 			break
-		} else if input == "N" {
+		} else if input == "n" {
 			break
 		} else {
-			fmt.Println("Invalid input. Please enter Y or N.")
+			fmt.Println("Invalid input. Please enter y or n.")
 		}
 	}
 
 	return proceed
 }
 
-func clone(repos []interactor.Repo) error {
+func showLocalRemotePrompt() string {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		d := color.New(color.FgGreen, color.Bold)
+		d.Print("What repo would you like to delete? (local/remote/both): ")
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(strings.ToLower(input))
+
+		switch input {
+		case local:
+			return input
+		case remote:
+			return input
+		case both:
+			return input
+		default:
+			fmt.Println("Invalid input. Please enter local, remote or both.")
+		}
+	}
+
+	return ""
+}
+
+func deleteRepos(cmd *cobra.Command, repos []interactor.Repo, target string) error {
 	i := interactor.New()
 
 	tui.PrintProgress(0.0)
@@ -211,7 +249,25 @@ func clone(repos []interactor.Repo) error {
 		wg.Add(1)
 		go func(r interactor.Repo) {
 			defer wg.Done()
-			results <- i.Clone(r)
+
+			errs := make([]error, 0)
+			if target == remote || target == both {
+				if err := i.DeleteRemote(cmd.Context(), r); err != nil {
+					errs = append(errs, err)
+				}
+			}
+
+			if target == local || target == both {
+				if err := i.DeleteLocal(r); err != nil {
+					errs = append(errs, err)
+				}
+			}
+
+			if len(errs) > 0 {
+				results <- errors.Join(errs...)
+			} else {
+				results <- nil
+			}
 		}(repo)
 	}
 
@@ -233,4 +289,5 @@ func clone(repos []interactor.Repo) error {
 	}
 
 	return nil
+
 }

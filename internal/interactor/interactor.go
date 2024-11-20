@@ -198,6 +198,24 @@ func (i Interactor) Clone(r Repo) error {
 	return i.git.Clone(r.URL, parent)
 }
 
+func (i Interactor) CreateRepo(ctx context.Context, r Repo, private bool) error {
+	return i.github.CreateRepo(ctx, r.Name, private)
+}
+
+func (i Interactor) DeleteRemote(ctx context.Context, r Repo) error {
+	if err := r.Validate(); err != nil {
+		return fmt.Errorf("invalid repo: %w", err)
+	}
+	return i.github.DeleteRepo(ctx, r.Owner, r.Name)
+}
+
+func (i Interactor) DeleteLocal(r Repo) error {
+	if err := r.Validate(); err != nil {
+		return fmt.Errorf("invalid repo: %w", err)
+	}
+	return i.filesystem.DeleteDir(r.Path())
+}
+
 func (i Interactor) Exists(r Repo) (bool, error) {
 	return i.filesystem.Exists(r.Path())
 }

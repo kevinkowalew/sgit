@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -49,6 +50,15 @@ func (f Filesystem) ListDirectories() ([]string, error) {
 	}
 
 	return dirs, nil
+}
+
+func (f Filesystem) DeleteDir(path string) error {
+	if path == "" {
+		return errors.New("path is empty, skipping for safety")
+	}
+	cmd := "rm -r " + path
+	fmt.Print(cmd)
+	return nil
 }
 
 func execute(cmd, workingDir string) (string, error) {
