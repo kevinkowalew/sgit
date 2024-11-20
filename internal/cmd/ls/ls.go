@@ -29,7 +29,7 @@ func init() {
 
 func run(cmd *cobra.Command, args []string) error {
 	var forksFlag *bool
-	if cmd.Flags().Changed("forks") {
+	if cmd.Flags().Changed("fork") {
 		forksFlag = forks
 	}
 

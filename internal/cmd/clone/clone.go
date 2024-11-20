@@ -48,7 +48,7 @@ func run(cmd *cobra.Command, args []string) error {
 func getTargets(cmd *cobra.Command, args []string) ([]interactor.Repo, error) {
 	if len(args) == 0 {
 		var forksFlag *bool
-		if cmd.Flags().Changed("forks") {
+		if cmd.Flags().Changed("fork") {
 			forksFlag = forks
 		}
 
