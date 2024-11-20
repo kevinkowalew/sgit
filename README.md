@@ -1,7 +1,17 @@
 # sgit 
 ## Intent
-- When working on `git` repos across multiple machines it can become hard to keep track of things.
-- `sgit` aims to alleviate this issue, giving you visibility into the state of local `git` repositories against their remote counterparts.
+- `git` can get messy. `sgit` aims to bring order to the chaos.
+
+# Usage
+## Shim
+To make `sgit` more pleasant to use, I point a `git` `alias` at the following shim.  This allows you to run `sgit` commands alongside traditional git without have to think about which binary to invoke.
+```sh
+if [[ $1 == "ls" || $1 == "sync" || $1 == "clone" || $1 == "delete" ]]; then
+	sgit "$@"
+else
+	git "$@"
+fi
+```
 
 ## Opinions
 - `sgit` clones all repos to a specified `CODE_HOME_DIR` environment variable.
