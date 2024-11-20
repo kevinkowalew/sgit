@@ -4,9 +4,9 @@
 
 # Usage
 ## Shim
-To make `sgit` more pleasant to use, I point a `git` `alias` at the following shim.  This allows you to run `sgit` commands alongside traditional git without have to think about which binary to invoke.
+To make `sgit` more pleasant to use, I point a `git` `alias` at the following shim.  This allows you to selectively run `sgit` commands alongside `git` without have to think about which binary to invoke (aka: `git ls`, `git clone`, `git delete`, `git init` all invoke `sgit` subcommands, while everything else leverages `git`)
 ```sh
-if [[ $1 == "ls" || $1 == "sync" || $1 == "clone" || $1 == "delete" ]]; then
+if [[ $1 == "ls" || $1 == "clone" || $1 == "delete" || $1 == "init" ]]; then
 	sgit "$@"
 else
 	git "$@"
