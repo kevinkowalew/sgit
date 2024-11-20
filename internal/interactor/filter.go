@@ -8,46 +8,64 @@ import (
 
 type Filter struct {
 	langs, states *set.Set[string]
+	names         []string
 	forks         *bool
 }
 
-func NewFilter(langs, states string, forks *bool) (*Filter, error) {
-	langsSet := set.New[string]()
-	langsP := strings.Split(langs, ",")
-	for _, lang := range langsP {
-		if len(lang) > 0 {
-			langsSet.Add(lang)
-		}
-	}
-
+func NewFilter(langs, states, names string, forks *bool) (*Filter, error) {
 	ss, err := statesSet(states)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state set: %w", err)
 	}
 
-	return &Filter{langsSet, ss, forks}, nil
+	return &Filter{
+		langs:  set.New(parseCommaSeparate(langs)...),
+		states: ss,
+		names:  parseCommaSeparate(names),
+		forks:  forks,
+	}, nil
 }
 
-func (f Filter) ShouldIncludeRepoStatePair(rsp RepoStatePair) bool {
-	if !f.ShouldIncludeRepo(rsp.Repo) {
-		return false
+func parseCommaSeparate(s string) []string {
+	parts := strings.Split(s, ",")
+	rv := make([]string, 0)
+	for _, p := range parts {
+		if len(p) > 0 {
+			rv = append(rv, p)
+		}
 	}
 
-	return f.states.Size() == 0 || f.states.Contains(rsp.State.String())
+	return rv
 }
 
-func (f Filter) ShouldIncludeRepo(r Repo) bool {
-	if f.langs.Size() > 0 && !f.langs.Contains(r.Language) {
+func (f Filter) ShouldInclude(rsp RepoStatePair) bool {
+	if f.langs.Size() > 0 && !f.langs.Contains(rsp.Language) {
 		return false
 	}
 
-	if f.forks != nil && !*f.forks && r.Fork {
+	if f.forks != nil && !*f.forks && rsp.Fork {
 		return false
-	} else if f.forks != nil && *f.forks && !r.Fork {
-		return false
-	} else {
-		return true
 	}
+
+	if f.forks != nil && *f.forks && !rsp.Fork {
+		return false
+	}
+
+	if f.states.Size() > 0 && !f.states.Contains(rsp.State.String()) {
+		return false
+	}
+
+	if len(f.names) > 0 {
+		for _, name := range f.names {
+			if strings.Contains(rsp.Name, name) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return true
 }
 
 func statesSet(commaSeparated string) (*set.Set[string], error) {

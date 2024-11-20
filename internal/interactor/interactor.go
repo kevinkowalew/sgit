@@ -54,13 +54,11 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 		local, ok := localRepoMap[remote.Path()]
 		if !ok {
 			rsp.State = NotCloned
-
-			if filter.ShouldIncludeRepoStatePair(rsp) {
-				repoStateMap[remote.Path()] = rsp
-			}
+			repoStateMap[remote.Path()] = rsp
 			continue
 		}
 
+		local.Fork = remote.Fork
 		rsp = RepoStatePair{
 			Repo: local,
 		}
@@ -74,10 +72,7 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 			rsp.State = UpToDate
 		}
 
-		if filter.ShouldIncludeRepoStatePair(rsp) {
-			repoStateMap[remote.Path()] = rsp
-		}
-
+		repoStateMap[remote.Path()] = rsp
 	}
 
 	for _, local := range localRepoMap {
@@ -99,15 +94,16 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 			rsp.State = NoRemoteRepo
 		}
 
-		if filter.ShouldIncludeRepoStatePair(rsp) {
-			repoStateMap[local.Path()] = rsp
-		}
+		repoStateMap[local.Path()] = rsp
 	}
 
 	rv := make(map[string][]RepoStatePair, 0)
 	for _, rsp := range repoStateMap {
-		e, _ := rv[rsp.Language]
-		rv[rsp.Language] = append(e, rsp)
+		if filter.ShouldInclude(rsp) {
+			e, _ := rv[rsp.Language]
+			rv[rsp.Language] = append(e, rsp)
+		}
+
 	}
 
 	return rv, nil
@@ -245,9 +241,7 @@ func (i Interactor) getRemoteRepos(ctx context.Context, filter Filter) (map[stri
 
 	rv := make(map[string]Repo, 0)
 	for repo := range results {
-		if filter.ShouldIncludeRepo(repo) {
-			rv[repo.Path()] = repo
-		}
+		rv[repo.Path()] = repo
 	}
 
 	return rv, nil

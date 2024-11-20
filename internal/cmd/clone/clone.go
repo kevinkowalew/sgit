@@ -15,20 +15,21 @@ import (
 )
 
 var (
-	langs *string
-	forks *bool
+	langs, names *string
+	forks        *bool
 )
 
 var Cmd = &cobra.Command{
 	Use:   "clone",
-	Short: "clone repo(s) based on provided filters",
-	Long:  "clone repo(s) based on provided filters",
+	Short: "clone repo(s)",
+	Long:  "clone repo(s)",
 	RunE:  run,
 }
 
 func init() {
-	langs = Cmd.PersistentFlags().StringP("langs", "l", "", "comma-separated list of languages to target")
-	forks = Cmd.PersistentFlags().BoolP("forks", "f", false, "target forked or non-forked repos")
+	langs = Cmd.PersistentFlags().StringP("lang", "l", "", "comma-separated string of languages to target")
+	forks = Cmd.PersistentFlags().BoolP("fork", "f", false, "target forked or non-forked repos")
+	names = Cmd.PersistentFlags().StringP("name", "n", "", "comma-separated string of repo names to target")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -51,7 +52,7 @@ func getTargets(cmd *cobra.Command, args []string) ([]interactor.Repo, error) {
 			forksFlag = forks
 		}
 
-		filter, err := interactor.NewFilter(*langs, interactor.NotCloned.String(), forksFlag)
+		filter, err := interactor.NewFilter(*langs, interactor.NotCloned.String(), *names, forksFlag)
 		if err != nil {
 			return nil, fmt.Errorf("interactor.NewFilter failed: %w", err)
 		}

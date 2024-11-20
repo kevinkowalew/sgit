@@ -56,9 +56,19 @@ func (f Filesystem) DeleteDir(path string) error {
 	if path == "" {
 		return errors.New("path is empty, skipping for safety")
 	}
+
+	exists, err := f.Exists(path)
+	if err != nil {
+		return fmt.Errorf("filesystem.Exists failed: %w", err)
+	}
+
+	if !exists {
+		return nil
+	}
+
 	cmd := "rm -r " + path
-	fmt.Print(cmd)
-	return nil
+	_, err = execute(cmd, f.baseDir)
+	return err
 }
 
 func execute(cmd, workingDir string) (string, error) {

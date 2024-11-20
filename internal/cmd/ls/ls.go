@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	langs, states *string
-	forks         *bool
+	langs, states, names *string
+	forks                *bool
 
 	Cmd = &cobra.Command{
 		Use:   "ls",
@@ -21,9 +21,10 @@ var (
 )
 
 func init() {
-	langs = Cmd.PersistentFlags().StringP("langs", "l", "", "comma-separated list of languages to target")
-	states = Cmd.PersistentFlags().StringP("states", "s", "", "comma-separated list of states to target")
-	forks = Cmd.PersistentFlags().BoolP("forks", "f", false, "target forked or non-forked repos")
+	langs = Cmd.PersistentFlags().StringP("lang", "l", "", "comma-separated list of languages to target")
+	states = Cmd.PersistentFlags().StringP("state", "s", "", "comma-separated list of states to target")
+	names = Cmd.PersistentFlags().StringP("name", "n", "", "comma-separated list of repo names to target")
+	forks = Cmd.PersistentFlags().BoolP("fork", "f", false, "target forked or non-forked repos")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -32,7 +33,7 @@ func run(cmd *cobra.Command, args []string) error {
 		forksFlag = forks
 	}
 
-	filter, err := interactor.NewFilter(*langs, *states, forksFlag)
+	filter, err := interactor.NewFilter(*langs, *states, *names, forksFlag)
 	if err != nil {
 		return fmt.Errorf("interactor.NewFilter failed: %w", err)
 	}
