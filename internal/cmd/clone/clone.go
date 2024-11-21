@@ -161,7 +161,7 @@ func normalize(arg string) interactor.Repo {
 	return interactor.Repo{
 		Name:  name,
 		Owner: username,
-		URL:   fmt.Sprintf("https://github.com/%s/%s", name, username),
+		URL:   fmt.Sprintf("https://github.com/%s/%s", username, name),
 	}
 }
 

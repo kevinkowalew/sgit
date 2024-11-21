@@ -28,7 +28,7 @@ func (c Git) GetSshUrl(path string) (string, error) {
 }
 
 func (c Git) Clone(url, path string) error {
-	cmd := fmt.Sprintf("git clone %s", url)
+	cmd := fmt.Sprintf("/usr/bin/git clone %s", url)
 	_, err := execute(cmd, path)
 	return err
 }
