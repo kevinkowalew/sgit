@@ -234,8 +234,6 @@ func showLocalRemotePrompt() string {
 			fmt.Println("Invalid input. Please enter local, remote or both.")
 		}
 	}
-
-	return ""
 }
 
 func deleteRepos(cmd *cobra.Command, repos []interactor.Repo, target string) error {

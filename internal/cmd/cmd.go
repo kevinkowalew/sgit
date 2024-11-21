@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sgit/internal/cmd/clone"
+	"sgit/internal/cmd/create"
 	del "sgit/internal/cmd/delete"
 	"sgit/internal/cmd/ls"
 
@@ -43,5 +44,6 @@ func assert(envVar string) {
 func init() {
 	cmd.AddCommand(ls.Cmd)
 	cmd.AddCommand(clone.Cmd)
+	cmd.AddCommand(create.Cmd)
 	cmd.AddCommand(del.Cmd)
 }

@@ -101,7 +101,9 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 	results := make(chan *RepoStatePair, len(repoStateMap))
 
 	for _, rsp := range repoStateMap {
+		wg.Add(1)
 		go func(rsp RepoStatePair) {
+			defer wg.Done()
 			if filter.Include(rsp) {
 				results <- &rsp
 			} else {
@@ -214,8 +216,19 @@ func (i Interactor) Clone(r Repo) error {
 	return i.git.Clone(r.URL, parent)
 }
 
-func (i Interactor) CreateRepo(ctx context.Context, r Repo, private bool) error {
-	return i.github.CreateRepo(ctx, r.Name, private)
+func (i Interactor) CreateRepo(ctx context.Context, name string, private bool) (*Repo, error) {
+	if err := i.github.CreateRepo(ctx, name, private); err != nil {
+		return nil, err
+	}
+
+	user := os.Getenv("GITHUB_USERNAME")
+	return &Repo{
+		Name: name,
+		// TODO: dynamically detect target language when running create in a repo
+		Language: "unknown",
+		Owner:    user,
+		URL:      fmt.Sprintf("https://github.com/%s/%s", user, name),
+	}, nil
 }
 
 func (i Interactor) DeleteRemote(ctx context.Context, r Repo) error {
@@ -234,10 +247,6 @@ func (i Interactor) DeleteLocal(r Repo) error {
 
 func (i Interactor) Exists(r Repo) (bool, error) {
 	return i.filesystem.Exists(r.Path())
-}
-
-func (li Interactor) BaseDir() string {
-	return li.baseDir
 }
 
 func (i Interactor) getRemoteRepos(ctx context.Context) (map[string]Repo, error) {
