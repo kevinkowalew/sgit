@@ -7,9 +7,10 @@ import (
 )
 
 type Filter struct {
-	langs, states *set.Set[string]
-	names         []string
-	forks         *bool
+	langs  *set.Set[string]
+	states *set.Set[State]
+	names  []string
+	forks  *bool
 }
 
 func NewFilter(langs, states, names string, forks *bool) (*Filter, error) {
@@ -51,7 +52,7 @@ func (f Filter) Include(rsp RepoStatePair) bool {
 		return false
 	}
 
-	if f.states.Size() > 0 && !f.states.Contains(rsp.State.String()) {
+	if f.states.Size() > 0 && !f.states.Contains(rsp.State) {
 		return false
 	}
 
@@ -68,35 +69,45 @@ func (f Filter) Include(rsp RepoStatePair) bool {
 	return true
 }
 
-func statesSet(commaSeparated string) (*set.Set[string], error) {
-	states := []string{
-		UpToDate.String(),
-		UncommittedChanges.String(),
-		NotGitRepo.String(),
-		NoRemoteRepo.String(),
-		IncorrectLanguageParentDirectory.String(),
-		NotCloned.String(),
+func statesSet(commaSeparated string) (*set.Set[State], error) {
+	normalize := func(s State) string {
+		return strings.ToLower(s.String())
 	}
 
-	rv := set.New[string]()
+	states := map[string]State{
+		normalize(UpToDate):                         UpToDate,
+		normalize(UncommittedChanges):               UncommittedChanges,
+		normalize(NotGitRepo):                       NotGitRepo,
+		normalize(NoRemoteRepo):                     NoRemoteRepo,
+		normalize(IncorrectLanguageParentDirectory): IncorrectLanguageParentDirectory,
+		normalize(NotCloned):                        NotCloned,
+	}
+
+	rv := set.New[State]()
 	for _, s := range strings.Split(commaSeparated, ",") {
 		if len(s) == 0 {
 			continue
 		}
 
+		ls := strings.ToLower(s)
 		found := false
-		for _, state := range states {
-			if strings.HasPrefix(state, s) {
+		for normalizedName, state := range states {
+			if strings.HasPrefix(normalizedName, ls) {
 				found = true
 				rv.Add(state)
 			}
 		}
 
 		if !found {
+			vs := make([]string, len(states))
+			for _, s := range states {
+				vs = append(vs, s.String())
+			}
+
 			return nil, fmt.Errorf(
 				"\ninvalid -states flag: \"%s\" \nvalid flags: %s",
 				s,
-				strings.Join(states, " "),
+				strings.Join(vs, " "),
 			)
 		}
 
