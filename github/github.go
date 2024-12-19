@@ -52,17 +52,13 @@ func (g Github) GetPrimaryLanguageForRepo(ctx context.Context, owner, name strin
 
 func (g Github) GetAllRepos(ctx context.Context) ([]Repository, error) {
 	// TODO: update to paginate correctly
-	e := fmt.Sprintf("/user/repos?affiliation=owner&per_page=100")
+	e := "/user/repos?affiliation=owner&per_page=100"
 	repos, err := execute[[]Repository](ctx, http.MethodGet, e, g.token, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	rv := make([]Repository, 0)
-	for _, repo := range *repos {
-		rv = append(rv, repo)
-	}
-	return rv, err
+	return *repos, nil
 }
 
 func (g Github) DeleteRepo(ctx context.Context, owner, name string) error {
@@ -122,6 +118,6 @@ func execute[T any](ctx context.Context, verb, endpoint, token string, body any)
 	}
 
 	var t *T
-	json.Unmarshal(resBody, &t)
-	return t, nil
+	err = json.Unmarshal(resBody, &t)
+	return t, err
 }

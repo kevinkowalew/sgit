@@ -121,7 +121,7 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 	rv := make(map[string][]RepoStatePair, 0)
 	for rsp := range results {
 		if rsp != nil {
-			e, _ := rv[rsp.Language]
+			e := rv[rsp.Language]
 			rv[rsp.Language] = append(e, *rsp)
 		}
 	}
@@ -159,9 +159,7 @@ func (i Interactor) getLocalRepoMap() (map[string]Repo, error) {
 }
 
 func (i Interactor) normalize(dir string) Repo {
-	if strings.HasSuffix(dir, "/") {
-		dir = dir[0 : len(dir)-1]
-	}
+	dir = strings.TrimSuffix(dir, "/")
 
 	p := strings.Split(dir, "/")
 	name := p[len(p)-1]

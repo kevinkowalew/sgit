@@ -12,11 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	langs, states *string
-	forks         *bool
-)
-
 var cmd = &cobra.Command{
 	Use:   "sgit",
 	Short: "git made simple",
