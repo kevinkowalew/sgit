@@ -71,6 +71,12 @@ func (f Filesystem) DeleteDir(path string) error {
 	return err
 }
 
+func (f Filesystem) MoveDir(existingPath, newPath string) error {
+	cmd := fmt.Sprintf("mv %s %s", existingPath, newPath)
+	_, err := execute(cmd, f.baseDir)
+	return err
+}
+
 func execute(cmd, workingDir string) (string, error) {
 	c := exec.Command("bash", "-c", cmd)
 	if workingDir != "" {

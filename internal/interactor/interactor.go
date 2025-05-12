@@ -51,16 +51,25 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 		rsp := RepoStatePair{
 			Repo: remote,
 		}
-		local, ok := localRepoMap[remote.Path()]
+		local, ok := localRepoMap[remote.FullName()]
 		if !ok {
 			rsp.State = NotCloned
-			repoStateMap[remote.Path()] = rsp
+			repoStateMap[remote.FullName()] = rsp
 			continue
 		}
 
 		local.Fork = remote.Fork
 		rsp = RepoStatePair{
 			Repo: local,
+		}
+
+		if remote.Language != local.Language {
+			if err := i.filesystem.MoveDir(local.Path(), remote.Path()); err != nil {
+				i.logger.Error(err, "filesystem.MoveDir failed", "repo_name", local.FullName())
+			} else {
+				local.Language = remote.Language
+				rsp.Repo.Language = remote.Language
+			}
 		}
 
 		if local.Language != remote.Language {
@@ -72,11 +81,11 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 			rsp.State = UpToDate
 		}
 
-		repoStateMap[remote.Path()] = rsp
+		repoStateMap[remote.FullName()] = rsp
 	}
 
 	for _, local := range localRepoMap {
-		if _, ok := remoteRepos[local.Path()]; ok {
+		if _, ok := remoteRepos[local.FullName()]; ok {
 			continue
 		}
 
@@ -94,7 +103,7 @@ func (i Interactor) GetRepoStates(ctx context.Context, filter Filter) (map[strin
 			rsp.State = NoRemoteRepo
 		}
 
-		repoStateMap[local.Path()] = rsp
+		repoStateMap[local.FullName()] = rsp
 	}
 
 	var wg sync.WaitGroup
@@ -152,7 +161,7 @@ func (i Interactor) getLocalRepoMap() (map[string]Repo, error) {
 
 	rv := make(map[string]Repo, 0)
 	for repo := range results {
-		rv[repo.Path()] = repo
+		rv[repo.FullName()] = repo
 	}
 
 	return rv, nil
@@ -268,7 +277,7 @@ func (i Interactor) getRemoteRepos(ctx context.Context) (map[string]Repo, error)
 
 	rv := make(map[string]Repo, 0)
 	for repo := range results {
-		rv[repo.Path()] = repo
+		rv[repo.FullName()] = repo
 	}
 
 	return rv, nil
